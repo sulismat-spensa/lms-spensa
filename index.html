@@ -1031,13 +1031,34 @@
         /* Angka bulat ditulis utuh (bukan 1,98E+17) agar NIP/NISN utuh. */
         return (Math.floor(v) === v) ? v.toFixed(0) : String(v);
       }
-      return String(v).trim();
+      var s = String(v).trim();
+      /* NIP/NISN yang terlanjur tersimpan sebagai TEKS notasi ilmiah
+         ("1,96908E+17" / "1.96908E+17", mis. hasil ubah format sel di
+         Excel) diuraikan lagi menjadi digit utuh di sini. */
+      if(/^\d{1,3}([.,]\d+)?[eE][+]?\d+$/.test(s)){
+        var n = Number(s.replace(",", "."));
+        if(isFinite(n) && n >= 1e10) return n.toFixed(0);
+      }
+      return s;
     }
     function kanonKolom(norm, kind){
       if(norm === "nama" || norm === "namalengkap") return kind === "siswa" ? "Nama Siswa" : "Nama Guru";
       for(var i = 0; i < KOLOM_IMPOR.length; i++){
         if(KOLOM_IMPOR[i].kunci.indexOf(norm) >= 0) return KOLOM_IMPOR[i].canon;
       }
+      /* Tebakan longgar untuk judul di luar daftar persis di atas
+         ("NIP/NIK", "No. Telp", "Mengajar", dst). Urutan dijaga agar
+         "Nama Siswa" tidak tertukar kolom telepon — kata "siswa"
+         mengandung "wa", jadi nama selalu dicocokkan lebih dulu dan
+         telepon hanya dari kata yang khas. */
+      if(norm.indexOf("nisn") >= 0) return "NISN";
+      if(norm.indexOf("nip") >= 0) return "NIP";
+      if(norm.indexOf("nama") >= 0) return kind === "siswa" ? "Nama Siswa" : "Nama Guru";
+      if(norm.indexOf("pelajaran") >= 0 || norm.indexOf("mapel") >= 0 || norm.indexOf("mengajar") >= 0) return "Mata Pelajaran";
+      if(norm.indexOf("telepon") >= 0 || norm.indexOf("telp") >= 0 || norm.indexOf("whatsapp") >= 0 || norm === "hp" || norm === "nohp") return "No. Telepon/WA";
+      if(norm.indexOf("email") >= 0 || norm.indexOf("surel") >= 0) return "Email";
+      if(norm.indexOf("kelamin") >= 0 || norm.indexOf("gender") >= 0 || norm === "lp" || norm === "jk") return "L/P";
+      if(norm.indexOf("kelas") >= 0 || norm.indexOf("rombel") >= 0) return "Kelas";
       return null;
     }
     function prosesAoaImpor(aoa, kind){
@@ -1058,10 +1079,10 @@
           }).filter(function(r){ return r.some(function(c){ return c !== ""; }); });
         }
       }
-      /* Cari baris judul pada 10 baris pertama: baris yang memuat kolom
+      /* Cari baris judul pada 25 baris pertama: baris yang memuat kolom
          id (NIP/NISN) atau kolom nama. Baris di atasnya diabaikan. */
       var idxKepala = -1, peta = null;
-      for(var i = 0; i < Math.min(baris.length, 10) && idxKepala < 0; i++){
+      for(var i = 0; i < Math.min(baris.length, 25) && idxKepala < 0; i++){
         var kandidat = baris[i].map(function(c){ return kanonKolom(normKepala(c), kind); });
         var adaId = kandidat.indexOf("NIP") >= 0 || kandidat.indexOf("NISN") >= 0;
         var adaNama = kandidat.indexOf("Nama Guru") >= 0 || kandidat.indexOf("Nama Siswa") >= 0;
@@ -1086,34 +1107,104 @@
       }
       return { rows:rows, info:{kolom:kolomAda, total:rows.length}, err:null };
     }
+    /* Muat pustaka SheetJS dari CDN cadangan bila salinan utama gagal
+       termuat di perangkat pengguna (sinyal lemah / CDN terhalang) —
+       tanpa pustaka ini file .xlsx memang tidak bisa dibaca sama
+       sekali, dan dulu kegagalan itu tampak seperti "file tidak
+       sesuai". Dicoba berurutan: cdnjs → jsdelivr → unpkg. */
+    var xlsxLoadPromise = null;
+    function ensureXLSX(){
+      if(window.XLSX) return Promise.resolve(true);
+      if(xlsxLoadPromise) return xlsxLoadPromise;
+      var urls = [
+        "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js",
+        "https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js",
+        "https://unpkg.com/xlsx@0.18.5/dist/xlsx.full.min.js"
+      ];
+      xlsxLoadPromise = new Promise(function(resolve){
+        var i = 0;
+        (function next(){
+          if(window.XLSX){ resolve(true); return; }
+          if(i >= urls.length){ resolve(false); return; }
+          var s = document.createElement("script");
+          s.src = urls[i++];
+          s.onload = function(){ if(window.XLSX) resolve(true); else next(); };
+          s.onerror = function(){ next(); };
+          document.head.appendChild(s);
+        })();
+      });
+      return xlsxLoadPromise;
+    }
+    /* AOA dari tabel HTML — untuk file ".xls" hasil ekspor aplikasi web
+       lain yang isinya sebenarnya tabel HTML, bukan Excel biner. */
+    function aoaDariHtml(teks){
+      function bersih(s){
+        return s.replace(/<[^>]*>/g, " ").replace(/&nbsp;/gi, " ").replace(/&amp;/gi, "&")
+          .replace(/&lt;/gi, "<").replace(/&gt;/gi, ">").replace(/&quot;/gi, '"')
+          .replace(/&#(\d+);/g, function(m, n){ return String.fromCharCode(Number(n)); })
+          .replace(/\s+/g, " ").trim();
+      }
+      var rows = [];
+      var trs = String(teks).split(/<tr[^>]*>/i).slice(1);
+      trs.forEach(function(tr){
+        var cells = [];
+        var re = /<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/gi, m;
+        while((m = re.exec(tr)) !== null) cells.push(bersih(m[1]));
+        if(cells.some(function(c){ return c !== ""; })) rows.push(cells);
+      });
+      return rows;
+    }
     function readSpreadsheet(file, kind, done){
       function selesaiAoa(aoa){
         var h = prosesAoaImpor(aoa, kind);
         done(h.rows, h.err, h.info);
       }
-      var isCsv = /\.csv$/i.test(file.name);
-      if(window.XLSX){
+      /* Periksa SEMUA sheet di berkas: pakai sheet pertama yang baris
+         judulnya dikenali (sheet data tidak selalu sheet pertama);
+         bila tidak ada yang dikenali, laporkan sheet terisi terbanyak
+         agar pesan galatnya tetap menyebut isi berkas yang sebenarnya. */
+      function selesaiWb(wb){
+        var terbaik = null, terbanyak = -1;
+        for(var i = 0; i < wb.SheetNames.length; i++){
+          var aoa = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[i]], {header:1, defval:"", raw:true});
+          var h = prosesAoaImpor(aoa, kind);
+          if(!h.err){ done(h.rows, null, h.info); return; }
+          if(aoa.length > terbanyak){ terbanyak = aoa.length; terbaik = h; }
+        }
+        if(terbaik) done(terbaik.rows, terbaik.err, terbaik.info);
+        else done(null, "File tidak berisi sheet data apa pun.", null);
+      }
+      /* Jalan terakhir: baca berkas sebagai teks (CSV/TSV, atau tabel
+         HTML untuk .xls ekspor aplikasi lain). */
+      function bacaSebagaiTeks(buf){
+        try {
+          var teks = new TextDecoder("utf-8").decode(buf);
+          if(/<\s*table[\s>]/i.test(teks)){ selesaiAoa(aoaDariHtml(teks)); return; }
+          selesaiAoa(parseCsvAoa(teks));
+        } catch(err){ done(null, "File tidak dapat dibaca. Pastikan formatnya .xlsx atau .csv.", null); }
+      }
+      function mulai(){
         var reader = new FileReader();
         reader.onload = function(e){
-          try {
-            var wb = XLSX.read(new Uint8Array(e.target.result), {type:"array"});
-            var ws = wb.Sheets[wb.SheetNames[0]];
-            selesaiAoa(XLSX.utils.sheet_to_json(ws, {header:1, defval:"", raw:true}));
-          } catch(err){ done(null, "File tidak dapat dibaca. Pastikan formatnya .xlsx atau .csv.", null); }
+          var buf = e.target.result;
+          if(window.XLSX){
+            try { selesaiWb(XLSX.read(new Uint8Array(buf), {type:"array"})); return; }
+            catch(err1){
+              try { selesaiWb(XLSX.read(new Uint8Array(buf), {type:"array", cellDates:true})); return; }
+              catch(err2){ bacaSebagaiTeks(buf); }
+            }
+          } else bacaSebagaiTeks(buf);
         };
         reader.onerror = function(){ done(null, "Gagal membaca file.", null); };
         reader.readAsArrayBuffer(file);
-      } else if(isCsv){
-        var r2 = new FileReader();
-        r2.onload = function(e){
-          try { selesaiAoa(parseCsvAoa(e.target.result)); }
-          catch(err){ done(null, "File CSV tidak dapat dibaca.", null); }
-        };
-        r2.onerror = function(){ done(null, "Gagal membaca file.", null); };
-        r2.readAsText(file);
-      } else {
-        done(null, "Pustaka Excel belum termuat (perlu koneksi internet). Silakan coba lagi saat tersambung internet, atau gunakan file .csv.", null);
       }
+      var isCsv = /\.csv$/i.test(file.name);
+      if(window.XLSX || isCsv){ mulai(); return; }
+      toast("Memuat pustaka Excel…");
+      ensureXLSX().then(function(ok){
+        if(ok) mulai();
+        else done(null, "Pustaka Excel belum termuat (perlu koneksi internet). Silakan coba lagi saat tersambung internet, atau gunakan file .csv.", null);
+      });
     }
     function parseCsvAoa(text){
       var lines = String(text || "").replace(/^\uFEFF/, "").replace(/\r\n/g,"\n").replace(/\r/g,"\n").split("\n").filter(function(l){return l.trim()!=="";});
@@ -1131,15 +1222,26 @@
     /* Pisahkan baris hasil baca menjadi baru / duplikat / tidak lengkap,
        agar setiap impor selalu berujung laporan yang jelas di layar —
        bukan toast sekilas yang mudah terlewat. */
+    /* Baris contoh bawaan template aplikasi sendiri. Bila admin mengisi
+       data di bawahnya tanpa menghapus baris contoh, baris ini dilewati
+       (dihitung tersendiri) — bukan dijadikan akun "guru/siswa contoh"
+       sungguhan, dan bukan pula dianggap berkas tidak sesuai. */
+    var CONTOH_IMPOR = {
+      guru:  { id:"198001012010011001", nama:"contoh guru, s.pd." },
+      siswa: { id:"0087651299", nama:"contoh siswa" }
+    };
+    function bersihIdImpor(s){ return String(s == null ? "" : s).replace(/[^0-9]/g, ""); }
     function klasifikasiImpor(rows, kind){
       var guru = kind === "guru";
-      var hasil = { baru:[], duplikat:0, takLengkap:[] };
+      var hasil = { baru:[], duplikat:0, takLengkap:[], contoh:0 };
+      var cx = CONTOH_IMPOR[kind];
       (rows || []).forEach(function(r, i){
-        var id = pick(r, [guru ? "nip" : "nisn"]);
+        var id = bersihIdImpor(pick(r, [guru ? "nip" : "nisn"]));
         var nama = pick(r, guru ? ["nama guru","nama"] : ["nama siswa","nama"]);
+        if(cx && id === cx.id && nama.toLowerCase() === cx.nama){ hasil.contoh++; return; }
         if(!id || !nama){ hasil.takLengkap.push({baris:i + 2, id:id, nama:nama}); return; }
-        var sudah = guru ? DB.teachers.some(function(t){ return t.nip === id; })
-                         : DB.students.some(function(s){ return s.nisn === id; });
+        var sudah = guru ? DB.teachers.some(function(t){ return bersihIdImpor(t.nip) === id; })
+                         : DB.students.some(function(s){ return bersihIdImpor(s.nisn) === id; });
         if(sudah || hasil.baru.some(function(b){ return b.id === id; })){ hasil.duplikat++; return; }
         hasil.baru.push({id:id, nama:nama, row:r});
       });
@@ -1171,6 +1273,9 @@
       } else {
         html += '<p style="font-size:.95rem;margin-bottom:10px"><b>Tidak ada data baru yang ditambahkan.</b></p>';
       }
+      if(hasil.contoh){
+        html += '<p style="font-size:.88rem;margin-bottom:8px">' + hasil.contoh + ' baris contoh dari template dilewati (baris contoh memang bukan data asli).</p>';
+      }
       if(hasil.duplikat){
         html += '<p style="font-size:.88rem;margin-bottom:8px">' + hasil.duplikat + ' baris dilewati karena ' + idLabel + '-nya sudah terdaftar sebelumnya.</p>';
       }
@@ -1183,7 +1288,7 @@
         if(hasil.takLengkap.length > 8) html += '<li>\u2026dan ' + (hasil.takLengkap.length - 8) + ' baris lainnya.</li>';
         html += '</ul>';
       }
-      if(!hasil.baru.length && !hasil.duplikat && !hasil.takLengkap.length){
+      if(!hasil.baru.length && !hasil.duplikat && !hasil.takLengkap.length && !hasil.contoh){
         html += '<p style="font-size:.88rem">File hanya berisi baris judul — belum ada baris data di bawahnya. Isi data di bawah baris judul template, lalu impor kembali.</p>';
       }
       html += '<div class="foot">'
@@ -1964,7 +2069,7 @@
       c.innerHTML = pageHead("Data Guru", "Kelola data guru pengampu SMP Negeri 1 Wonosari.",
           '<button class="btn ghost" id="tplBtn">Unduh Template</button>'
           + '<button class="btn ghost" id="impBtn">Import Excel</button>'
-          + '<input type="file" id="impFile" accept=".xlsx,.xls,.csv" class="hidden" />'
+          + '<input type="file" id="impFile" accept=".xlsx,.xls,.csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv,text/plain" class="hidden" />'
           + '<button class="btn" id="addBtn">+ Tambah Guru Manual</button>')
         + '<div class="stats">'
         + '<div class="stat"><b>'+DB.teachers.length+'</b><span>Total Guru</span></div>'
@@ -2071,7 +2176,7 @@
       c.innerHTML = pageHead("Data Siswa", "Kelola data siswa dan akun login mereka.",
           '<button class="btn ghost" id="tplBtn">Unduh Template</button>'
           + '<button class="btn ghost" id="impBtn">Import Excel</button>'
-          + '<input type="file" id="impFile" accept=".xlsx,.xls,.csv" class="hidden" />'
+          + '<input type="file" id="impFile" accept=".xlsx,.xls,.csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv,text/plain" class="hidden" />'
           + '<button class="btn" id="addBtn">+ Tambah Siswa Manual</button>')
         + '<div class="toolbar no-print"><div class="field"><label style="font-size:.78rem;font-weight:700;color:var(--muted)">Filter Kelas</label><select id="fKelas">'+opts+'</select></div>'
         + '<span class="pill" style="align-self:center">Menampilkan '+list.length+' siswa</span></div>'
