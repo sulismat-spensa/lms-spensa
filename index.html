@@ -572,8 +572,8 @@
     function sessionFromUser(user){
       if(!user) return null;
       var u = userByUsername(user.username);
-      if(u) return {username:u.username, role:u.role, name:u.name, nip:u.nip || null, nisn:u.nisn || null};
-      return {username:user.username, role:capRole(user.peran), name:user.nama || user.username, nip:null, nisn:null};
+      if(u) return {username:u.username, role:u.role, name:u.name, nip:u.nip || null, nisn:u.nisn || null, refId:u._refId || String(user.ref_id || ""), guruId:u._guruId || ""};
+      return {username:user.username, role:capRole(user.peran), name:user.nama || user.username, nip:null, nisn:null, refId:String(user.ref_id || ""), guruId:""};
     }
     function scoreOf(v){
       if(v === "" || v === null || v === undefined) return null;
@@ -616,6 +616,21 @@
       siswas.forEach(function(s){ siswaById[String(s.id)] = s; });
       function nipOf(gid){ var g = guruById[String(gid)]; return g ? String(g.nip || "") : ""; }
       function nisnOf(sid){ var s = siswaById[String(sid)]; return s ? String(s.nisn || "") : ""; }
+      /* Baris Guru untuk sebuah akun: dari ref_id bila masih ada; bila
+         ref_id menunjuk baris lama yang sudah tidak ada (data guru pernah
+         ditempel ulang), pulihkan lewat nama akun — hanya bila tepat satu
+         baris Guru yang cocok. Tanpa pemulihan ini, akun guru tersebut
+         kehilangan NIP-nya dan seluruh kontennya tersaring dari daftar
+         "milik saya" begitu Admin menghubungkan konten ke baris Guru yang
+         sekarang. */
+      function guruUntukUser(u){
+        var g = guruById[String(u.ref_id)];
+        if(g) return g;
+        var target = namaInti(u.nama);
+        if(!target) return null;
+        var cocok = gurus.filter(function(x){ return namaInti(x.nama)===target; });
+        return cocok.length===1 ? cocok[0] : null;
+      }
       var soalByKuis = {}, soalIdsByKuis = {};
       kSoal.slice().sort(function(a, b){ return Number(a.no || 0) - Number(b.no || 0); }).forEach(function(q){
         var kid = String(q.kuis_id);
@@ -633,7 +648,7 @@
           desc = d.slice(0, pos).replace(/\s+$/, "");
           questions = d.slice(pos + 8).split("\n").map(function(s){ return s.trim(); }).filter(Boolean);
         }
-        return {id:String(a.id), title:a.judul || "", desc:desc, mapel:a.mapel || "", kelas:a.kelas || "", nip:nipOf(a.guru_id), link:a.link || "", questions:questions};
+        return {id:String(a.id), title:a.judul || "", desc:desc, mapel:a.mapel || "", kelas:a.kelas || "", nip:nipOf(a.guru_id), guruId:String(a.guru_id || ""), guruNama:a.guru_nama || "", link:a.link || "", questions:questions};
       }
       function splitJawaban(j){
         var s = String(j || "");
@@ -646,15 +661,18 @@
         students: siswas.map(function(s){ return {_id:String(s.id), nisn:String(s.nisn || ""), name:s.nama || "", gender:s.lp || "L", kelas:String(s.kelas || ""), username:s.username || ""}; }),
         subjects: mapels.map(function(m){ return {_id:String(m.id), code:m.kode || "", name:m.nama || "", level:m.tingkat || "", teacher:m.guru_nama || "", _guruId:String(m.guru_id || "")}; }),
         users: users.map(function(u){
+          var peranU = String(u.peran).toLowerCase();
+          var gAkun = peranU === "guru" ? guruUntukUser(u) : null;
           return {username:u.username, role:capRole(u.peran), name:u.nama || "", active:String(u.status || "Aktif") === "Aktif",
             _refId:String(u.ref_id || ""),
-            nip: String(u.peran).toLowerCase() === "guru" ? (nipOf(u.ref_id) || null) : null,
-            nisn: String(u.peran).toLowerCase() === "siswa" ? (nisnOf(u.ref_id) || null) : null};
+            _guruId: gAkun ? String(gAkun.id) : "",
+            nip: peranU === "guru" ? ((gAkun ? String(gAkun.nip || "") : "") || null) : null,
+            nisn: peranU === "siswa" ? (nisnOf(u.ref_id) || null) : null};
         }),
-        materi: materis.map(function(m){ return {id:String(m.id), title:m.judul || "", desc:m.deskripsi || "", link:m.link || "", mapel:m.mapel || "", kelas:String(m.kelas || ""), nip:nipOf(m.guru_id)}; }),
-        tugas: tugass.map(function(t){ return {id:String(t.id), title:t.judul || "", desc:t.deskripsi || "", kelas:String(t.kelas || ""), mapel:t.mapel || "", deadline:normDate(t.deadline), link:t.link || "", nip:nipOf(t.guru_id)}; }),
+        materi: materis.map(function(m){ return {id:String(m.id), title:m.judul || "", desc:m.deskripsi || "", link:m.link || "", mapel:m.mapel || "", kelas:String(m.kelas || ""), nip:nipOf(m.guru_id), guruId:String(m.guru_id || ""), guruNama:m.guru_nama || ""}; }),
+        tugas: tugass.map(function(t){ return {id:String(t.id), title:t.judul || "", desc:t.deskripsi || "", kelas:String(t.kelas || ""), mapel:t.mapel || "", deadline:normDate(t.deadline), link:t.link || "", nip:nipOf(t.guru_id), guruId:String(t.guru_id || ""), guruNama:t.guru_nama || ""}; }),
         submissions: tKumpul.map(function(x){ return {id:String(x.id), tugasId:String(x.tugas_id), nisn:nisnOf(x.siswa_id), answer:x.jawaban || "", link:x.link || "", score:scoreOf(x.nilai), at:normDate(x.submitted_at)}; }),
-        kuis: kuiss.map(function(k){ return {id:String(k.id), title:k.judul || "", mapel:k.mapel || "", kelas:String(k.kelas || ""), nip:nipOf(k.guru_id), link:k.link || "", questions:soalByKuis[String(k.id)] || [], _soalIds:soalIdsByKuis[String(k.id)] || []}; }),
+        kuis: kuiss.map(function(k){ return {id:String(k.id), title:k.judul || "", mapel:k.mapel || "", kelas:String(k.kelas || ""), nip:nipOf(k.guru_id), guruId:String(k.guru_id || ""), guruNama:k.guru_nama || "", link:k.link || "", questions:soalByKuis[String(k.id)] || [], _soalIds:soalIdsByKuis[String(k.id)] || []}; }),
         kuisResults: kHasil.map(function(x){ return {id:String(x.id), kuisId:String(x.kuis_id), nisn:nisnOf(x.siswa_id), score:Number(x.skor) || 0, at:normDate(x.submitted_at)}; }),
         asesmen: asesmens.map(parseAsesmen),
         asesmenResults: aKumpul.map(function(x){ return {id:String(x.id), asesmenId:String(x.asesmen_id), nisn:nisnOf(x.siswa_id), answers:splitJawaban(x.jawaban), score:scoreOf(x.nilai), at:normDate(x.submitted_at)}; }),
@@ -699,6 +717,67 @@
 
     /* ---------------- HELPER DATA ---------------- */
     function teacherByNip(nip){ return DB.teachers.find(function(t){return t.nip===nip;}); }
+    function teacherById(id){ if(!id) return null; return DB.teachers.find(function(t){return String(t._id||"")===String(id);}) || null; }
+    /* Nama inti untuk pencocokan akun ↔ data guru: huruf kecil, gelar di
+       belakang koma dibuang ("Sulistyana, S.Pd., M.Pd" → "sulistyana"),
+       tanda baca lain menjadi spasi. Dipakai untuk memulihkan tautan yang
+       putus, bukan sebagai kunci utama. */
+    function namaInti(s){
+      var x = String(s || "").toLowerCase().split(",")[0];
+      return x.replace(/[^a-z\s]/g, " ").replace(/\s+/g, " ").trim();
+    }
+    /* Cari baris Guru dari sebuah nama; hanya diterima bila tepat satu
+       baris yang cocok, agar tidak salah menghubungkan ke guru lain. */
+    function guruDariNama(nama){
+      var target = namaInti(nama);
+      if(!target) return null;
+      var cocok = DB.teachers.filter(function(t){ return namaInti(t.name)===target; });
+      return cocok.length===1 ? cocok[0] : null;
+    }
+    /* Pemilik sebuah konten (materi/tugas/kuis/asesmen) ditentukan dari id
+       baris Guru yang stabil: di server, guru_id konten dicap dari ref_id
+       akun pengunggahnya, jadi keduanya bisa dibandingkan langsung tanpa
+       perantara. NIP cadangan bila id tidak tersedia (mode lokal / data
+       lama). Cadangan terakhir: nama pengunggah yang tercap pada konten —
+       ref_id akun bisa menunjuk baris Guru lama yang sudah tidak ada
+       (data guru pernah ditempel ulang), sehingga id konten tidak
+       terhubung ke baris Guru mana pun padahal gurunya jelas. Bila semua
+       jalan tidak terhubung, konten dianggap yatim — tetap ditampilkan
+       ke Admin untuk diperbaiki, tidak disembunyikan. */
+    function pemilikKonten(item){
+      return teacherById(item.guruId) || (item.nip ? teacherByNip(item.nip) : null) || guruDariNama(item.guruNama);
+    }
+    function namaPemilikKonten(item){
+      var t = pemilikKonten(item);
+      if(t) return t.name;
+      return item.guruNama ? item.guruNama + " (data guru tidak ditemukan)" : "Pemilik tidak terhubung";
+    }
+    /* Baris Guru milik akun yang sedang masuk. ref_id akun bisa basi
+       (menunjuk baris Guru lama yang sudah dihapus), jadi resolusinya
+       berlapis: id hasil pemulihan sesi → ref_id akun → NIP → nama akun.
+       Dengan ini materi yang oleh Admin dihubungkan ke baris Guru yang
+       sekarang tetap tampil di daftar gurunya, dan materi lama yang
+       tercap id lama juga tetap tampil. */
+    function guruSaya(){
+      if(!session || session.role!=="Guru") return null;
+      var t = teacherById(session.guruId) || teacherById(session.refId);
+      if(t) return t;
+      if(session.nip){ t = teacherByNip(session.nip); if(t) return t; }
+      return guruDariNama(session.name);
+    }
+    function milikSaya(item){
+      if(!session) return false;
+      if(item.guruId){
+        if(session.refId && String(item.guruId)===String(session.refId)) return true;
+        if(session.guruId && String(item.guruId)===String(session.guruId)) return true;
+      }
+      var me = guruSaya();
+      if(me){
+        var owner = pemilikKonten(item);
+        if(owner && String(owner._id)===String(me._id)) return true;
+      }
+      return !!(item.nip && session.nip && item.nip===session.nip);
+    }
     function studentByNisn(nisn){ return DB.students.find(function(s){return s.nisn===nisn;}); }
     function studentByUsername(u){ return DB.students.find(function(s){return s.username===u;}); }
     function userByUsername(u){ return DB.users.find(function(x){return x.username===u;}); }
@@ -773,7 +852,7 @@
     }
     function tampilAkunBaru(peranLabel, username, password){
       openModal('<h3>Akun Login ' + esc(peranLabel) + ' Dibuat</h3>'
-        + '<div class="sub">Catat dan sampaikan kredensial berikut kepada yang bersangkutan. Kata sandi awal dibuat acak oleh aplikasi dan hanya ditampilkan sekali di sini; selanjutnya dapat diganti oleh admin lewat menu Kelola Password.</div>'
+        + '<div class="sub">Sampaikan kredensial berikut kepada yang bersangkutan. Kata sandi awal dibuat acak oleh aplikasi; kredensial ini juga tercatat di perangkat admin ini dan dapat diunduh lagi kapan pun lewat tombol <b>Unduh Daftar Akun</b> di menu Kelola Password. Kata sandi dapat diganti oleh admin lewat menu yang sama.</div>'
         + '<p style="font-size:.95rem;margin-bottom:6px">Username: <b>' + esc(username) + '</b></p>'
         + '<p style="font-size:.95rem">Kata sandi awal: <b>' + esc(password) + '</b></p>'
         + '<div class="foot"><button class="btn ghost" id="akunBaruCsv">Unduh Kredensial (.csv)</button><button class="btn" id="akunBaruOk">Selesai</button></div>');
@@ -962,6 +1041,7 @@
         {key:"guru", label:"Data Guru", icon:"guru"},
         {key:"siswa", label:"Data Siswa", icon:"siswa"},
         {key:"mapel", label:"Mata Pelajaran", icon:"mapel"},
+        {key:"a-materi", label:"Materi", icon:"materi"},
         {key:"rekap", label:"Rekap Nilai Kelas", icon:"rekap"},
         {key:"laporan", label:"Laporan Nilai", icon:"laporan"},
         {key:"logo", label:"Ganti Logo", icon:"logo"},
@@ -1018,11 +1098,146 @@
       if(key==="guru") viewAdminGuru(c);
       else if(key==="siswa") viewAdminSiswa(c);
       else if(key==="mapel") viewAdminMapel(c);
+      else if(key==="a-materi") viewAdminMateri(c);
       else if(key==="rekap") viewAdminRekap(c);
       else if(key==="laporan") viewAdminLaporan(c);
       else if(key==="logo") viewAdminLogo(c);
       else if(key==="password") viewAdminPassword(c);
       else if(key==="koneksi") viewAdminKoneksi(c);
+    }
+
+    /* ---- Admin: Materi (semua guru) ---- */
+    var admMatFilter = {mapel:"Semua", kelas:"Semua", guru:"Semua"};
+    function kunciGuru(t){ return TERPUSAT() ? String(t._id || "") : String(t.nip || ""); }
+    /* Catatan pada formulir Edit Materi Admin bila akun login guru tujuan
+       belum tertaut langsung ke data gurunya. Tautan langsung: ref_id akun
+       menunjuk baris Guru ini (mode lokal: NIP akun sama). Bila hanya nama
+       akun yang cocok, aplikasi tetap menampilkan materinya ke guru itu
+       lewat pencocokan nama — catatan ini memberi tahu Admin agar tidak
+       kaget dan tahu batasnya. */
+    function catatanTautanGuruHtml(t){
+      if(!t) return "";
+      var langsung = DB.users.some(function(u){
+        if(u.role!=="Guru") return false;
+        if(TERPUSAT()) return !!(u._refId && String(u._refId)===String(t._id));
+        return !!(u.nip && t.nip && u.nip===t.nip);
+      });
+      if(langsung) return "";
+      var gaya = 'margin-top:10px;padding:10px 12px;border:1.5px solid var(--warn);background:var(--warnbg);border-radius:10px;font-size:.85rem;line-height:1.55';
+      var akunNama = DB.users.find(function(u){ return u.role==="Guru" && namaInti(u.name) && namaInti(u.name)===namaInti(t.name); });
+      if(akunNama) return '<div style="'+gaya+'"><b>Catatan tautan akun:</b> akun login guru ini (username <b>'+esc(akunNama.username)+'</b>) belum tertaut langsung ke data guru ini — penunjuk akunnya masih mengarah ke data guru lama. Materi ini <b>tetap tampil</b> di daftar Materi guru tersebut karena aplikasi mencocokkan akunnya lewat nama. Agar tetap terhubung, jaga nama akun loginnya sama dengan nama pada data guru ini.</div>';
+      return '<div style="'+gaya+'"><b>Catatan tautan akun:</b> belum ada akun login guru yang tertaut ke data guru ini, jadi guru tersebut belum dapat melihat materi ini di daftar Materinya. Guru baru bisa melihatnya setelah memiliki akun login yang tertaut ke data guru ini (penunjuk akun cocok, atau nama akun sama dengan nama pada data guru ini).</div>';
+    }
+    function kartuMateriAdmin(m){
+      var t = pemilikKonten(m);
+      var labelPemilik = t ? esc(t.name) : '<span style="color:var(--warn);font-weight:700">'+esc(namaPemilikKonten(m))+'</span>';
+      return '<div class="item"><div class="top"><div><h3>'+esc(m.title)+'</h3><div class="meta"><span class="pill">'+esc(m.mapel)+'</span> <span class="pill">Kelas '+esc(m.kelas)+'</span> <span class="pill">Guru: '+labelPemilik+'</span></div></div>'
+        + '<div class="acts"><button class="btn small ghost" data-edit-materi-adm="'+m.id+'">Edit</button><button class="btn small danger" data-del-materi-adm="'+m.id+'">Hapus</button></div></div>'
+        + '<div class="body">'+esc(m.desc)+'</div>'
+        + (m.link ? '<div style="margin-top:8px"><a href="'+esc(m.link)+'" target="_blank" rel="noopener">Buka tautan materi ↗</a></div>' : '')
+        + '</div>';
+    }
+    function ikatTombolMateriAdmin(c){
+      Array.prototype.forEach.call(c.querySelectorAll("[data-edit-materi-adm]"), function(b){
+        b.onclick = function(){ formMateriAdmin(DB.materi.find(function(m){return m.id===b.getAttribute("data-edit-materi-adm");})); };
+      });
+      Array.prototype.forEach.call(c.querySelectorAll("[data-del-materi-adm]"), function(b){
+        b.onclick = function(){
+          var m = DB.materi.find(function(x){return x.id===b.getAttribute("data-del-materi-adm");});
+          if(!m) return;
+          confirmModal("Hapus Materi", "Hapus materi \""+m.title+"\"?", function(){
+            if(TERPUSAT()){
+              api("remove", {sheet:"Materi", id:m.id})
+                .then(function(r){ if(!r || !r.ok) throw new Error((r && r.error) || "Gagal menghapus materi di server."); return loadAll(); })
+                .then(function(){ toast("Materi dihapus."); gotoView("a-materi"); })
+                .catch(remoteFail);
+              return;
+            }
+            DB.materi = DB.materi.filter(function(x){return x.id!==m.id;});
+            save(); toast("Materi dihapus."); gotoView("a-materi");
+          });
+        };
+      });
+    }
+    function viewAdminMateri(c){
+      var yatim = DB.materi.filter(function(m){ return !pemilikKonten(m); });
+      var terhubung = DB.materi.filter(function(m){ return !!pemilikKonten(m); });
+      var list = terhubung.filter(function(m){
+        if(admMatFilter.mapel!=="Semua" && m.mapel!==admMatFilter.mapel) return false;
+        if(admMatFilter.kelas!=="Semua" && m.kelas!==admMatFilter.kelas) return false;
+        if(admMatFilter.guru!=="Semua"){ var t = pemilikKonten(m); if(!t || kunciGuru(t)!==admMatFilter.guru) return false; }
+        return true;
+      });
+      var mapelOpts = ["Semua"].concat(mapelList()).map(function(mp){
+        return '<option value="'+esc(mp)+'"'+(admMatFilter.mapel===mp?" selected":"")+'>'+(mp==="Semua"?"Semua Mapel":esc(mp))+'</option>';
+      }).join("");
+      var kelasOpts = ["Semua"].concat(KELAS_LIST).map(function(k){
+        return '<option value="'+k+'"'+(admMatFilter.kelas===k?" selected":"")+'>'+(k==="Semua"?"Semua Kelas":"Kelas "+k)+'</option>';
+      }).join("");
+      var guruOpts = '<option value="Semua"'+(admMatFilter.guru==="Semua"?" selected":"")+'>Semua Guru</option>' + DB.teachers.map(function(t){
+        var v = kunciGuru(t);
+        return '<option value="'+esc(v)+'"'+(admMatFilter.guru===v?" selected":"")+'>'+esc(t.name)+'</option>';
+      }).join("");
+      c.innerHTML = pageHead("Materi — Semua Guru", "Seluruh materi yang diunggah guru di LMS ini. Admin dapat menyaring berdasarkan mapel, kelas, dan guru pengunggah, serta mengubah atau menghapus materi.")
+        + (yatim.length ? '<div class="card" style="border:1.5px solid var(--warn);background:var(--warnbg);margin-bottom:14px"><h3 style="color:var(--warn)">Perlu Perbaikan — Pemilik Tidak Terhubung ('+yatim.length+')</h3>'
+            + '<p class="desc" style="margin-bottom:12px">Materi berikut tidak terhubung ke data guru mana pun (misalnya karena data guru pernah ditempel ulang), sehingga tidak tampil di menu Materi gurunya. Klik <b>Edit</b> lalu pilih <b>Guru Pengunggah</b> yang benar untuk menghubungkannya kembali.</p>'
+            + '<div class="item-list">' + yatim.map(kartuMateriAdmin).join("") + '</div></div>' : '')
+        + '<div class="toolbar no-print">'
+        + '<div class="field"><label style="font-size:.78rem;font-weight:700;color:var(--muted)">Mapel</label><select id="amMapel">'+mapelOpts+'</select></div>'
+        + '<div class="field"><label style="font-size:.78rem;font-weight:700;color:var(--muted)">Kelas</label><select id="amKelas">'+kelasOpts+'</select></div>'
+        + '<div class="field"><label style="font-size:.78rem;font-weight:700;color:var(--muted)">Guru Pengunggah</label><select id="amGuru">'+guruOpts+'</select></div>'
+        + '<span class="pill" style="align-self:center">Menampilkan '+list.length+' dari '+terhubung.length+' materi terhubung</span></div>'
+        + (list.length ? '<div class="item-list">' + list.map(kartuMateriAdmin).join("") + '</div>'
+            : emptyState(DB.materi.length ? "Tidak ada materi yang cocok dengan saringan ini." : "Belum ada materi yang diunggah guru."));
+      document.getElementById("amMapel").onchange = function(e){ admMatFilter.mapel = e.target.value; gotoView("a-materi"); };
+      document.getElementById("amKelas").onchange = function(e){ admMatFilter.kelas = e.target.value; gotoView("a-materi"); };
+      document.getElementById("amGuru").onchange = function(e){ admMatFilter.guru = e.target.value; gotoView("a-materi"); };
+      ikatTombolMateriAdmin(c);
+    }
+    function formMateriAdmin(m){
+      if(!m) return;
+      var pemilik = pemilikKonten(m);
+      var guruOpts = (pemilik ? "" : '<option value="">— Pilih guru pengunggah —</option>') + DB.teachers.map(function(t){
+        var v = kunciGuru(t);
+        return '<option value="'+esc(v)+'"'+(pemilik && kunciGuru(pemilik)===v?" selected":"")+'>'+esc(t.name)+' — '+esc(t.subject)+'</option>';
+      }).join("");
+      openModal('<h3>Edit Materi</h3><div class="sub">Perubahan berlaku untuk tampilan siswa pada kelas tujuan. Mengganti Guru Pengunggah memindahkan materi ini ke daftar Materi guru tersebut.</div>'
+        + '<div class="field"><label>Judul Materi</label><input id="famJudul" value="'+esc(m.title)+'" /></div>'
+        + '<div class="field"><label>Deskripsi / Ringkasan</label><textarea id="famDesc" rows="3">'+esc(m.desc)+'</textarea></div>'
+        + '<div class="field"><label>Link / URL Materi (video, PDF, presentasi, dsb.)</label><input id="famLink" value="'+esc(m.link)+'" placeholder="https://…" /></div>'
+        + '<div class="grid2"><div class="field"><label>Mata Pelajaran</label><select id="famMapel">'+mapelOptions(m.mapel)+'</select></div>'
+        + '<div class="field"><label>Kelas Tujuan</label><select id="famKelas">'+kelasOptions(m.kelas)+'</select></div></div>'
+        + '<div class="field"><label>Guru Pengunggah</label><select id="famGuru">'+guruOpts+'</select></div>'
+        + '<div id="famGuruCatatan"></div>'
+        + '<div class="foot"><button class="btn ghost" onclick="closeModal()">Batal</button><button class="btn" id="famSave">Simpan Materi</button></div>');
+      var famGuruSel = document.getElementById("famGuru");
+      var perbaruiCatatanGuru = function(){
+        var tSel = DB.teachers.find(function(t){ return kunciGuru(t)===famGuruSel.value; });
+        document.getElementById("famGuruCatatan").innerHTML = catatanTautanGuruHtml(tSel);
+      };
+      famGuruSel.onchange = perbaruiCatatanGuru;
+      perbaruiCatatanGuru();
+      document.getElementById("famSave").onclick = function(){
+        var judul = document.getElementById("famJudul").value.trim();
+        if(!judul){ toast("Judul materi wajib diisi."); return; }
+        var kunci = document.getElementById("famGuru").value;
+        var guru = DB.teachers.find(function(t){ return kunciGuru(t)===kunci; });
+        if(!guru){ toast("Pilih guru pengunggah terlebih dahulu."); return; }
+        var data = {title:judul, desc:document.getElementById("famDesc").value.trim(), link:document.getElementById("famLink").value.trim(),
+          mapel:document.getElementById("famMapel").value, kelas:document.getElementById("famKelas").value};
+        if(TERPUSAT()){
+          var rowMt = {judul:data.title, deskripsi:data.desc, link:data.link, mapel:data.mapel, kelas:data.kelas, guru_id:guru._id, guru_nama:guru.name};
+          api("update", {sheet:"Materi", id:m.id, row:rowMt})
+            .then(function(r){ if(!r || !r.ok) throw new Error((r && r.error) || "Gagal menyimpan materi ke server."); return loadAll(); })
+            .then(function(){ closeModal(); toast("Materi diperbarui."); gotoView("a-materi"); })
+            .catch(remoteFail);
+          return;
+        }
+        var t = DB.materi.find(function(x){return x.id===m.id;});
+        for(var k in data) t[k]=data[k];
+        t.nip = guru.nip; t.guruNama = guru.name;
+        save(); closeModal(); toast("Materi diperbarui."); gotoView("a-materi");
+      };
     }
 
     /* ---- Admin: Pengaturan Koneksi ---- */
@@ -1326,9 +1541,9 @@
       var label = guru ? "guru" : "siswa";
       var idLabel = guru ? "NIP" : "NISN";
       /* Daftar akun baru + kata sandi awalnya, siap diunduh untuk
-         dibagikan ke masing-masing guru/siswa. Juga dicatat ke
-         KRED_SESI agar tetap dapat diunduh dari menu Kelola Password
-         selama sesi ini berjalan. */
+         dibagikan ke masing-masing guru/siswa. Juga dicatat lewat
+         catatKredensial agar tersimpan di perangkat admin ini dan
+         tetap dapat diunduh lagi dari menu Kelola Password kapan pun. */
       var akunRows = hasil.baru.filter(function(b){ return b.akun; }).map(function(b){
         catatKredensial(b.akun.username, b.akun.password);
         return [b.nama, b.id, b.akun.username, b.akun.password];
@@ -1342,7 +1557,7 @@
           html += '<div class="table-wrap" style="margin-bottom:10px"><table><thead><tr><th>Username</th><th>Kata Sandi Awal</th></tr></thead><tbody>'
             + hasil.baru.map(function(b){ return b.akun ? '<tr><td><b>' + esc(b.akun.username) + '</b></td><td>' + esc(b.akun.password) + '</td></tr>' : ''; }).join("")
             + '</tbody></table></div>'
-            + '<p style="font-size:.85rem;margin-bottom:10px">Unduh daftar ini lewat tombol <b>Unduh Daftar Akun</b> di bawah, lalu sampaikan ke masing-masing ' + label + '. Kata sandi awal hanya tampil di sini dan pada file unduhan tersebut; selanjutnya dapat diganti oleh admin lewat menu Kelola Password.</p>';
+            + '<p style="font-size:.85rem;margin-bottom:10px">Unduh daftar ini lewat tombol <b>Unduh Daftar Akun</b> di bawah, lalu sampaikan ke masing-masing ' + label + '. Kata sandi awal ini juga tercatat di perangkat admin ini, jadi daftar lengkapnya dapat diunduh lagi kapan pun lewat tombol <b>Unduh Daftar Akun</b> di menu Kelola Password; kata sandi dapat diganti oleh admin lewat menu yang sama.</p>';
         }
       } else {
         html += '<p style="font-size:.95rem;margin-bottom:10px"><b>Tidak ada data baru yang ditambahkan.</b></p>';
@@ -1417,18 +1632,29 @@
       }, 30000);
     }
     /* ---- Daftar akun & kata sandi yang dapat diunduh ----
-       Admin perlu membagikan username + kata sandi awal ke guru/siswa.
-       Kata sandi awal yang dibuat aplikasi (saat tambah/import akun) dan
-       kata sandi yang baru diatur admin lewat Kelola Password dicatat di
-       KRED_SESI — hanya selama sesi ini berjalan, tidak disimpan
-       permanen — agar daftarnya dapat diunduh lagi dari menu Kelola
-       Password walau jendela hasil import sudah ditutup. Pada mode
-       terpusat kata sandi lama memang tidak dapat ditampilkan kembali:
-       server hanya menyimpan hash-nya, jadi pada daftar unduhan akun
-       lama ditandai "—" dan admin dapat mengaturnya ulang di sini. */
+       Admin perlu membagikan username + kata sandi ke guru/siswa, juga
+       memberitahukannya lagi bila ada yang lupa. Kata sandi awal yang
+       dibuat aplikasi (saat tambah/import akun) dan kata sandi yang
+       diatur admin lewat Kelola Password dicatat di KRED_SESI, dan
+       catatan itu DISIMPAN di perangkat admin ini (localStorage
+       "lms_kred_admin") agar daftar lengkapnya tetap dapat diunduh dari
+       menu Kelola Password kapan pun dari perangkat yang sama — tidak
+       hilang saat halaman ditutup atau dimuat ulang. Catatan ini hanya
+       ada di perangkat tempat akun dibuat/diatur kata sandinya.
+       Pada mode terpusat, kata sandi yang tidak pernah dibuat/diatur
+       lewat aplikasi di perangkat ini memang tidak dapat ditampilkan:
+       server hanya menyimpan hash-nya, jadi akun semacam itu ditandai
+       "—" pada daftar unduhan dan admin mengaturnya ulang lewat
+       formulir Kelola Password (kata sandi barunya lalu tercatat). */
+    var KRED_KEY = "lms_kred_admin";
     var KRED_SESI = {};
+    try { KRED_SESI = JSON.parse(localStorage.getItem(KRED_KEY)) || {}; } catch(e){ KRED_SESI = {}; }
+    if(!KRED_SESI || typeof KRED_SESI !== "object") KRED_SESI = {};
     function catatKredensial(username, password){
-      if(username && password) KRED_SESI[username] = password;
+      if(username && password){
+        KRED_SESI[username] = password;
+        try { localStorage.setItem(KRED_KEY, JSON.stringify(KRED_SESI)); } catch(e){}
+      }
     }
     function buatBerkasTabel(headers, rows){
       function selCsv(v){
@@ -2648,10 +2874,10 @@
           return [u.username, u.name, u.role, ket, u.active === false ? "Nonaktif" : "Aktif", sandi];
         });
         var catatanAkun = TERPUSAT()
-          ? 'Kolom <b>Kata Sandi</b> terisi untuk akun yang <b>baru dibuat atau baru diatur ulang kata sandinya pada sesi ini</b> — unduh daftarnya segera setelah membuat akun agar tidak hilang. Akun lama bertanda "—" karena kata sandinya tersimpan terenkripsi (hash) di server dan tidak dapat ditampilkan kembali; bila diperlukan, atur kata sandi baru untuk akun tersebut lewat formulir di halaman ini, lalu unduh lagi daftarnya.'
+          ? 'Kolom <b>Kata Sandi</b> terisi untuk akun yang kata sandinya <b>dibuat atau diatur lewat aplikasi ini di perangkat ini</b> (saat tambah/import akun atau reset di halaman ini) — catatannya tersimpan di perangkat ini, jadi daftar ini dapat diunduh lagi kapan pun dari perangkat yang sama. Akun bertanda "—" kata sandinya tidak tercatat di perangkat ini (misalnya dibuat di luar aplikasi atau di perangkat lain) dan di server hanya tersimpan terenkripsi (hash) sehingga tidak dapat ditampilkan kembali; bila pemiliknya lupa, atur kata sandi baru lewat formulir di halaman ini — kata sandi barunya otomatis tercatat dan muncul pada daftar unduhan berikutnya.'
           : 'Daftar ini berisi kata sandi akun pada data lokal perangkat ini. Simpan file unduhan di tempat aman dan sampaikan kata sandi hanya kepada pemilik akun masing-masing.';
         modalUnduhTabel("Daftar Akun Pengguna — Username & Kata Sandi",
-          "Seluruh akun guru, siswa, dan admin beserta kata sandinya, untuk dibagikan kepada pemilik akun masing-masing.",
+          "Seluruh akun guru, siswa, dan admin, lengkap dengan kata sandi yang tercatat di perangkat ini, untuk dibagikan kepada pemilik akun masing-masing. Akun yang kata sandinya belum tercatat bertanda \"—\" — lihat catatan di bawah daftar.",
           ["Username", "Nama", "Peran", "Keterangan", "Status", "Kata Sandi"], rowsAkun,
           "daftar-akun-pengguna", catatanAkun);
       };
@@ -2693,7 +2919,7 @@
     }
 
     /* ================= DASHBOARD GURU ================= */
-    function myTeacher(){ return teacherByNip(session.nip) || {name:session.name, subject:"-", nip:session.nip}; }
+    function myTeacher(){ return guruSaya() || {name:session.name, subject:"-", nip:session.nip}; }
     function renderGuru(key, c){
       if(key==="g-materi") viewGuruMateri(c);
       else if(key==="g-tugas") viewGuruTugas(c);
@@ -2712,7 +2938,7 @@
     /* ---- Guru: Materi ---- */
     function viewGuruMateri(c){
       var me = myTeacher();
-      var list = DB.materi.filter(function(m){ return m.nip===me.nip; });
+      var list = DB.materi.filter(function(m){ return milikSaya(m); });
       c.innerHTML = pageHead("Materi Saya — " + me.subject, "Bagikan materi pembelajaran beserta tautan pendukung kepada siswa.",
           '<button class="btn" id="addBtn">+ Tambah Materi</button>')
         + (list.length ? '<div class="item-list">' + list.map(function(m){
@@ -2775,7 +3001,7 @@
     /* ---- Guru: Tugas ---- */
     function viewGuruTugas(c){
       var me = myTeacher();
-      var list = DB.tugas.filter(function(t){ return t.nip===me.nip; });
+      var list = DB.tugas.filter(function(t){ return milikSaya(t); });
       c.innerHTML = pageHead("Tugas — " + me.subject, "Buat tugas untuk kelas, pantau pengumpulan, dan beri nilai.",
           '<button class="btn" id="addBtn">+ Buat Tugas</button>')
         + (list.length ? '<div class="item-list">' + list.map(function(t){
@@ -2879,7 +3105,7 @@
     /* ---- Guru: Kuis ---- */
     function viewGuruKuis(c){
       var me = myTeacher();
-      var list = DB.kuis.filter(function(k){ return k.nip===me.nip; });
+      var list = DB.kuis.filter(function(k){ return milikSaya(k); });
       c.innerHTML = pageHead("Kuis — " + me.subject, "Buat kuis pilihan ganda; nilai siswa terhitung otomatis dari kunci jawaban.",
           '<button class="btn" id="addBtn">+ Buat Kuis</button>')
         + (list.length ? '<div class="item-list">' + list.map(function(k){
@@ -2991,7 +3217,7 @@
     /* ---- Guru: Asesmen ---- */
     function viewGuruAsesmen(c){
       var me = myTeacher();
-      var list = DB.asesmen.filter(function(a){ return a.nip===me.nip; });
+      var list = DB.asesmen.filter(function(a){ return milikSaya(a); });
       c.innerHTML = pageHead("Asesmen — " + me.subject, "Buat asesmen uraian dan beri nilai pada jawaban siswa.",
           '<button class="btn" id="addBtn">+ Buat Asesmen</button>')
         + (list.length ? '<div class="item-list">' + list.map(function(a){
