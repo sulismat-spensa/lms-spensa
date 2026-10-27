@@ -155,6 +155,29 @@
       .kelas-opt input{width:16px;height:16px;margin:0;accent-color:var(--blue);flex:none}
       .kelas-opt:has(input:checked){border-color:var(--blue);background:var(--chip)}
       .kelas-pick-acts{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+      .bab-head{display:flex;align-items:center;gap:10px;margin:24px 0 10px}
+      .bab-head:first-child{margin-top:2px}
+      .bab-head h3{font-size:1.04rem;font-weight:800}
+      .bab-head .pill{flex:none}
+      .materi-links{display:grid;gap:7px;margin-top:10px}
+      .mlink{display:flex;align-items:center;gap:10px;border:1.5px solid var(--line);border-radius:10px;padding:9px 12px;text-decoration:none;color:var(--ink);background:var(--surface2)}
+      .mlink:hover{border-color:var(--blue)}
+      .mlink-ico{flex:none;display:flex;color:var(--blue)}
+      .mlink-main{flex:1;min-width:0;display:flex;flex-direction:column}
+      .mlink-main b{font-size:.88rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+      .mlink-jenis{font-size:.7rem;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.5px}
+      .mlink-buka{flex:none;font-size:.8rem;font-weight:700;color:var(--blue)}
+      .link-editor{display:grid;gap:8px}
+      .link-row{display:grid;grid-template-columns:1.05fr .75fr 1.35fr auto;gap:7px;align-items:center}
+      .link-row input,.link-row select{width:100%;padding:10px 11px;border:1.5px solid var(--line);border-radius:10px;background:var(--surface2);outline:none;font-size:.9rem}
+      .link-row input:focus,.link-row select:focus{border-color:var(--blue)}
+      .mapel-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(215px,1fr));gap:12px}
+      .mapel-card{display:block;width:100%;text-align:left;border:1.5px solid var(--line);border-radius:var(--radius);background:var(--surface);padding:16px 18px;cursor:pointer;font-family:inherit;color:var(--ink)}
+      .mapel-card:hover{border-color:var(--blue)}
+      .mapel-card b{font-size:1.02rem;font-weight:800;display:block}
+      .mapel-card .mc-meta{display:block;color:var(--muted);font-size:.82rem;font-weight:600;margin-top:3px}
+      .mapel-card .mc-buka{display:block;color:var(--blue);font-size:.84rem;font-weight:700;margin-top:10px}
+      @media (max-width:640px){ .link-row{grid-template-columns:1fr 1fr} .link-row .lr-url{grid-column:1/-1} }
       .q-block{margin-bottom:18px}
       .q-block .q-text{font-weight:700;margin-bottom:9px}
       .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
@@ -315,6 +338,161 @@
        tanpa skema ditambah https://; skema selain http/https ditolak. */
     function normLink(u){ u = String(u == null ? "" : u).trim(); if(!u) return ""; if(/^https?:\/\//i.test(u)) return u; if(/^[a-z][a-z0-9+.-]*:/i.test(u)) return ""; return "https://" + u; }
     function extLinkHtml(link, label){ var u = normLink(link); if(!u) return ""; return '<div style="margin-top:8px"><a class="btn small" href="'+esc(u)+'" target="_blank" rel="noopener" style="text-decoration:none">'+esc(label)+' ↗</a></div>'; }
+
+    /* ============================================================
+       BAB & MULTI-LINK PADA MATERI
+       Satu materi kini punya field "bab" (teks, mis. "Bab 1 — …")
+       dan field "links": daftar link [{label, jenis, url}] — di mode
+       lokal disimpan sebagai array, dari sheet server sebagai string
+       JSON (kolom "links"). Field lama "link" tetap dipertahankan:
+       isinya = URL link pertama dari daftar, dan materi lama yang
+       hanya punya "link" tetap tampil sebagai satu link berlabel
+       "Link Materi" (jenis File Materi).
+       ============================================================ */
+    var MATERI_JENIS_LINK = ["File Materi", "Video", "Presentasi", "Gambar", "Latihan", "Lainnya"];
+    function materiLinks(m){
+      var raw = m ? m.links : null, arr = null;
+      if(Array.isArray(raw)) arr = raw;
+      else if(typeof raw === "string" && raw.trim()){
+        try { var p = JSON.parse(raw); if(Array.isArray(p)) arr = p; } catch(e){ arr = null; }
+      }
+      var out = [];
+      if(arr) arr.forEach(function(x){
+        if(!x) return;
+        var u = normLink(x.url == null ? "" : x.url);
+        if(!u) return;
+        out.push({label: String(x.label == null ? "" : x.label).trim() || "Link Materi",
+          jenis: MATERI_JENIS_LINK.indexOf(x.jenis) >= 0 ? x.jenis : "Lainnya", url: u});
+      });
+      if(!out.length && m && m.link){
+        var u2 = normLink(m.link);
+        if(u2) out.push({label:"Link Materi", jenis:"File Materi", url:u2});
+      }
+      return out;
+    }
+    function babNomor(bab){
+      var mm = String(bab == null ? "" : bab).match(/^\s*bab\s*(\d+)/i);
+      return mm ? parseInt(mm[1], 10) : null;
+    }
+    function urutBab(a, b){
+      if(a === b) return 0;
+      if(a === "") return 1;   /* kelompok Tanpa Bab selalu paling akhir */
+      if(b === "") return -1;
+      var na = babNomor(a), nb = babNomor(b);
+      if(na !== null && nb !== null && na !== nb) return na - nb;
+      if(na !== null && nb === null) return -1;
+      if(na === null && nb !== null) return 1;
+      return a.toLowerCase() < b.toLowerCase() ? -1 : 1;
+    }
+    /* Kelompokkan daftar materi per bab -> [{bab, label, items}] terurut. */
+    function kelompokBab(list){
+      var map = {}, keys = [];
+      list.forEach(function(m){
+        var b = String(m.bab == null ? "" : m.bab).trim();
+        if(!map[b]){ map[b] = []; keys.push(b); }
+        map[b].push(m);
+      });
+      keys.sort(urutBab);
+      return keys.map(function(b){ return {bab:b, label: b === "" ? "Tanpa Bab" : b, items:map[b]}; });
+    }
+    function ikonJenisLink(jenis){
+      var inner;
+      if(jenis === "Video") inner = '<circle cx="12" cy="12" r="10"/><path d="m10 8 6 4-6 4V8z"/>';
+      else if(jenis === "Presentasi") inner = '<rect x="2" y="3" width="20" height="14" rx="2"/><path d="M12 17v4"/><path d="M8 21h8"/>';
+      else if(jenis === "Gambar") inner = '<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"/>';
+      else if(jenis === "Latihan") inner = '<path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/>';
+      else if(jenis === "Lainnya") inner = '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>';
+      else inner = '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/>'; /* File Materi */
+      return '<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + inner + '</svg>';
+    }
+    /* Daftar semua link sebuah materi sebagai baris berlabel + jenisnya. */
+    function materiLinksHtml(m){
+      var ls = materiLinks(m);
+      if(!ls.length) return "";
+      return '<div class="materi-links">' + ls.map(function(l){
+        return '<a class="mlink" href="'+esc(l.url)+'" target="_blank" rel="noopener">'
+          + '<span class="mlink-ico">'+ikonJenisLink(l.jenis)+'</span>'
+          + '<span class="mlink-main"><b>'+esc(l.label)+'</b><span class="mlink-jenis">'+esc(l.jenis)+'</span></span>'
+          + '<span class="mlink-buka">Buka ↗</span></a>';
+      }).join("") + '</div>';
+    }
+    function babHeadHtml(g){
+      return '<div class="bab-head"><h3>'+esc(g.label)+'</h3><span class="pill">'+g.items.length+' materi</span></div>';
+    }
+    /* Saran nama bab untuk mapel tertentu (dari bab yang sudah dipakai
+       pada mapel yang sama) agar ejaan bab konsisten antar-materi. */
+    function babDatalistHtml(prefix, mapel){
+      var set = [];
+      DB.materi.forEach(function(m){
+        var b = String(m.bab == null ? "" : m.bab).trim();
+        if(b && m.mapel === mapel && set.indexOf(b) < 0) set.push(b);
+      });
+      set.sort(urutBab);
+      return '<datalist id="'+prefix+'BabList">' + set.map(function(b){ return '<option value="'+esc(b)+'"></option>'; }).join("") + '</datalist>';
+    }
+    function segarkanBabList(prefix, mapel){
+      var dl = document.getElementById(prefix + "BabList");
+      if(dl) dl.outerHTML = babDatalistHtml(prefix, mapel);
+    }
+    /* ---- Editor daftar link dinamis pada formulir materi ----
+       Setiap baris: Label, Jenis (select), URL, tombol hapus.
+       Dipakai formulir guru (awalan "fm") dan admin (awalan "fam"). */
+    function jenisLinkOptions(sel){
+      return MATERI_JENIS_LINK.map(function(j){ return '<option value="'+j+'"'+(sel === j ? " selected" : "")+'>'+j+'</option>'; }).join("");
+    }
+    function linkRowHtml(l){
+      l = l || {};
+      return '<div class="link-row">'
+        + '<input data-l-label value="'+esc(l.label || "")+'" placeholder="Label, mis. File Materi PDF" />'
+        + '<select data-l-jenis>'+jenisLinkOptions(l.jenis || "File Materi")+'</select>'
+        + '<input class="lr-url" data-l-url value="'+esc(l.url || "")+'" placeholder="https://…" />'
+        + '<button type="button" class="btn small danger" data-l-hapus title="Hapus baris link ini">✕</button>'
+        + '</div>';
+    }
+    function linkEditorHtml(prefix, links){
+      return '<div class="link-editor" id="'+prefix+'LinkRows">'
+        + (links && links.length ? links.map(linkRowHtml).join("") : "")
+        + '</div>'
+        + '<button type="button" class="btn ghost small" id="'+prefix+'AddLink" style="margin-top:8px">+ Tambah Link</button>'
+        + '<div style="color:var(--muted);font-size:.8rem;margin-top:4px">Satu materi boleh berisi banyak link sekaligus — file materi, video, presentasi, gambar, latihan, dan sebagainya, semuanya terkumpul di bab ini. Baris yang masih kosong akan diabaikan; materi juga boleh tanpa link sama sekali.</div>';
+    }
+    function ikatLinkEditor(prefix){
+      var rows = document.getElementById(prefix + "LinkRows");
+      if(!rows) return;
+      function ikatHapus(){
+        Array.prototype.forEach.call(rows.querySelectorAll("[data-l-hapus]"), function(b){
+          b.onclick = function(){ var r = b.closest(".link-row"); if(r) r.parentNode.removeChild(r); };
+        });
+      }
+      ikatHapus();
+      document.getElementById(prefix + "AddLink").onclick = function(){
+        var d = document.createElement("div");
+        d.innerHTML = linkRowHtml(null);
+        rows.appendChild(d.firstChild);
+        ikatHapus();
+      };
+    }
+    /* Baca editor link -> {ok:true, links:[…]} atau {ok:false, msg}.
+       URL divalidasi seperti link eksternal lain (normLink): boleh
+       diketik tanpa https://, skema selain http/https ditolak. */
+    function linkEditorValue(prefix){
+      var rows = document.getElementById(prefix + "LinkRows");
+      var out = [], err = "";
+      if(!rows) return {ok:true, links:[]};
+      Array.prototype.forEach.call(rows.querySelectorAll(".link-row"), function(r){
+        if(err) return;
+        var label = r.querySelector("[data-l-label]").value.trim();
+        var jenis = r.querySelector("[data-l-jenis]").value;
+        var urlMentah = r.querySelector("[data-l-url]").value.trim();
+        if(!label && !urlMentah) return; /* baris kosong: lewati */
+        if(!urlMentah){ err = "Ada baris link yang berlabel tetapi URL-nya masih kosong. Isi URL-nya atau hapus barisnya."; return; }
+        var u = normLink(urlMentah);
+        if(!u){ err = "Ada URL link yang tidak valid — hanya alamat http/https yang diperbolehkan."; return; }
+        out.push({label: label || jenis, jenis: jenis, url: u});
+      });
+      if(err) return {ok:false, msg:err};
+      return {ok:true, links:out};
+    }
     function fmt(n){ if(n===null||n===undefined||isNaN(n)) return "–"; return (Math.round(n*10)/10).toString().replace(".",","); }
     function predikat(na){ if(na>=90) return "A"; if(na>=80) return "B"; if(na>=70) return "C"; return "D"; }
     function keterangan(na){ return na>=75 ? "Tuntas" : "Belum Tuntas"; }
@@ -373,10 +551,10 @@
 
       var G1 = teachers[0].nip, G2 = teachers[1].nip;
       var materi = [
-        {id:"m1", title:"Persamaan Linear Satu Variabel (PLSV)", desc:"Materi dasar aljabar kelas 7: pengertian kalimat terbuka, kesetaraan, dan langkah menyelesaikan PLSV dengan operasi invers.", link:"https://sumber.belajar.kemdikbud.go.id", mapel:"Matematika", kelas:"7A", nip:G1},
-        {id:"m2", title:"Statistika: Mean, Median, dan Modus", desc:"Cara menghitung dan menafsirkan ukuran pemusatan data tunggal dari tabel dan diagram batang.", link:"https://sumber.belajar.kemdikbud.go.id", mapel:"Matematika", kelas:"8A", nip:G1},
-        {id:"m3", title:"Kesebangunan dan Kekongruenan", desc:"Syarat dua bangun datar sebangun dan kongruen, serta penerapannya pada segitiga dan soal cerita sehari-hari.", link:"https://sumber.belajar.kemdikbud.go.id", mapel:"Matematika", kelas:"9A", nip:G1},
-        {id:"m4", title:"Ekosistem dan Interaksi Makhluk Hidup", desc:"Komponen biotik dan abiotik, rantai makanan, jaring-jaring makanan, dan simbiosis di lingkungan sekitar kita.", link:"https://sumber.belajar.kemdikbud.go.id", mapel:"IPA", kelas:"7A", nip:G2}
+        {id:"m1", title:"Persamaan Linear Satu Variabel (PLSV)", desc:"Materi dasar aljabar kelas 7: pengertian kalimat terbuka, kesetaraan, dan langkah menyelesaikan PLSV dengan operasi invers.", bab:"Bab 1 — Persamaan Linear Satu Variabel", link:"https://sumber.belajar.kemdikbud.go.id", links:[{label:"File Materi PLSV (Rumah Belajar)", jenis:"File Materi", url:"https://sumber.belajar.kemdikbud.go.id"},{label:"Video Pembelajaran PLSV", jenis:"Video", url:"https://www.youtube.com/results?search_query=persamaan+linear+satu+variabel+kelas+7"}], mapel:"Matematika", kelas:"7A", nip:G1},
+        {id:"m2", title:"Statistika: Mean, Median, dan Modus", desc:"Cara menghitung dan menafsirkan ukuran pemusatan data tunggal dari tabel dan diagram batang.", bab:"Bab 2 — Statistika", link:"https://sumber.belajar.kemdikbud.go.id", links:[{label:"File Materi Statistika (Rumah Belajar)", jenis:"File Materi", url:"https://sumber.belajar.kemdikbud.go.id"}], mapel:"Matematika", kelas:"8A", nip:G1},
+        {id:"m3", title:"Kesebangunan dan Kekongruenan", desc:"Syarat dua bangun datar sebangun dan kongruen, serta penerapannya pada segitiga dan soal cerita sehari-hari.", bab:"Bab 1 — Kesebangunan dan Kekongruenan", link:"https://sumber.belajar.kemdikbud.go.id", links:[{label:"File Materi Kesebangunan (Rumah Belajar)", jenis:"File Materi", url:"https://sumber.belajar.kemdikbud.go.id"},{label:"Video Syarat Segitiga Sebangun dan Kongruen", jenis:"Video", url:"https://www.youtube.com/results?search_query=kesebangunan+dan+kekongruenan+kelas+9"}], mapel:"Matematika", kelas:"9A", nip:G1},
+        {id:"m4", title:"Ekosistem dan Interaksi Makhluk Hidup", desc:"Komponen biotik dan abiotik, rantai makanan, jaring-jaring makanan, dan simbiosis di lingkungan sekitar kita.", bab:"Bab 1 — Ekosistem", link:"https://sumber.belajar.kemdikbud.go.id", links:[{label:"File Materi Ekosistem (Rumah Belajar)", jenis:"File Materi", url:"https://sumber.belajar.kemdikbud.go.id"}], mapel:"IPA", kelas:"7A", nip:G2}
       ];
       var tugas = [
         {id:"t1", title:"Latihan PLSV — Soal Cerita", desc:"Kerjakan soal cerita PLSV nomor 1–10 di buku tugas, foto hasilnya, lalu tuliskan ringkasan jawaban dan cara pengerjaan pada kolom jawaban.", kelas:"7A", mapel:"Matematika", deadline:"2026-10-27", link:"", nip:G1},
@@ -679,7 +857,7 @@
             nip: peranU === "guru" ? ((gAkun ? String(gAkun.nip || "") : "") || null) : null,
             nisn: peranU === "siswa" ? (nisnOf(u.ref_id) || null) : null};
         }),
-        materi: materis.map(function(m){ return {id:String(m.id), title:m.judul || "", desc:m.deskripsi || "", link:m.link || "", mapel:m.mapel || "", kelas:String(m.kelas || ""), nip:nipOf(m.guru_id), guruId:String(m.guru_id || ""), guruNama:m.guru_nama || ""}; }),
+        materi: materis.map(function(m){ return {id:String(m.id), title:m.judul || "", desc:m.deskripsi || "", link:m.link || "", bab:m.bab || "", links:(m.links == null ? "" : m.links), mapel:m.mapel || "", kelas:String(m.kelas || ""), nip:nipOf(m.guru_id), guruId:String(m.guru_id || ""), guruNama:m.guru_nama || ""}; }),
         tugas: tugass.map(function(t){ return {id:String(t.id), title:t.judul || "", desc:t.deskripsi || "", kelas:String(t.kelas || ""), mapel:t.mapel || "", deadline:normDate(t.deadline), link:t.link || "", nip:nipOf(t.guru_id), guruId:String(t.guru_id || ""), guruNama:t.guru_nama || ""}; }),
         submissions: tKumpul.map(function(x){ return {id:String(x.id), tugasId:String(x.tugas_id), nisn:nisnOf(x.siswa_id), answer:x.jawaban || "", link:x.link || "", score:scoreOf(x.nilai), at:normDate(x.submitted_at)}; }),
         kuis: kuiss.map(function(k){ return {id:String(k.id), title:k.judul || "", mapel:k.mapel || "", kelas:String(k.kelas || ""), nip:nipOf(k.guru_id), guruId:String(k.guru_id || ""), guruNama:k.guru_nama || "", link:k.link || "", questions:soalByKuis[String(k.id)] || [], _soalIds:soalIdsByKuis[String(k.id)] || []}; }),
@@ -1137,7 +1315,7 @@
     }
 
     /* ---- Admin: Materi (semua guru) ---- */
-    var admMatFilter = {mapel:"Semua", kelas:"Semua", guru:"Semua"};
+    var admMatFilter = {mapel:"Semua", kelas:"Semua", guru:"Semua", bab:"Semua"};
     function kunciGuru(t){ return TERPUSAT() ? String(t._id || "") : String(t.nip || ""); }
     /* Catatan pada formulir Edit Materi Admin bila akun login guru tujuan
        belum tertaut langsung ke data gurunya. Tautan langsung: ref_id akun
@@ -1161,10 +1339,11 @@
     function kartuMateriAdmin(m){
       var t = pemilikKonten(m);
       var labelPemilik = t ? esc(t.name) : '<span style="color:var(--warn);font-weight:700">'+esc(namaPemilikKonten(m))+'</span>';
-      return '<div class="item"><div class="top"><div><h3>'+esc(m.title)+'</h3><div class="meta"><span class="pill">'+esc(m.mapel)+'</span> <span class="pill">Kelas '+esc(kelasTampil(m.kelas))+'</span> <span class="pill">Guru: '+labelPemilik+'</span></div></div>'
+      var babTeks = String(m.bab == null ? "" : m.bab).trim();
+      return '<div class="item"><div class="top"><div><h3>'+esc(m.title)+'</h3><div class="meta"><span class="pill">'+esc(m.mapel)+'</span> <span class="pill">'+esc(babTeks || "Tanpa Bab")+'</span> <span class="pill">Kelas '+esc(kelasTampil(m.kelas))+'</span> <span class="pill">Guru: '+labelPemilik+'</span></div></div>'
         + '<div class="acts"><button class="btn small ghost" data-edit-materi-adm="'+m.id+'">Edit</button><button class="btn small danger" data-del-materi-adm="'+m.id+'">Hapus</button></div></div>'
         + '<div class="body">'+esc(m.desc)+'</div>'
-        + (m.link ? '<div style="margin-top:8px"><a href="'+esc(m.link)+'" target="_blank" rel="noopener">Buka tautan materi ↗</a></div>' : '')
+        + materiLinksHtml(m)
         + '</div>';
     }
     function ikatTombolMateriAdmin(c){
@@ -1196,6 +1375,10 @@
         if(admMatFilter.mapel!=="Semua" && m.mapel!==admMatFilter.mapel) return false;
         if(admMatFilter.kelas!=="Semua" && !kelasMasuk(m, admMatFilter.kelas)) return false;
         if(admMatFilter.guru!=="Semua"){ var t = pemilikKonten(m); if(!t || kunciGuru(t)!==admMatFilter.guru) return false; }
+        if(admMatFilter.bab!=="Semua"){
+          var bM = String(m.bab == null ? "" : m.bab).trim();
+          if(admMatFilter.bab==="__tanpa__" ? bM!=="" : bM!==admMatFilter.bab) return false;
+        }
         return true;
       });
       var mapelOpts = ["Semua"].concat(mapelList()).map(function(mp){
@@ -1208,6 +1391,15 @@
         var v = kunciGuru(t);
         return '<option value="'+esc(v)+'"'+(admMatFilter.guru===v?" selected":"")+'>'+esc(t.name)+'</option>';
       }).join("");
+      var babAda = [];
+      terhubung.forEach(function(m){
+        var b = String(m.bab == null ? "" : m.bab).trim();
+        if(b && babAda.indexOf(b) < 0) babAda.push(b);
+      });
+      babAda.sort(urutBab);
+      var babOpts = '<option value="Semua"'+(admMatFilter.bab==="Semua"?" selected":"")+'>Semua Bab</option>'
+        + babAda.map(function(b){ return '<option value="'+esc(b)+'"'+(admMatFilter.bab===b?" selected":"")+'>'+esc(b)+'</option>'; }).join("")
+        + '<option value="__tanpa__"'+(admMatFilter.bab==="__tanpa__"?" selected":"")+'>Tanpa Bab</option>';
       c.innerHTML = pageHead("Materi — Semua Guru", "Seluruh materi yang diunggah guru di LMS ini. Admin dapat menyaring berdasarkan mapel, kelas, dan guru pengunggah, serta mengubah atau menghapus materi.")
         + (yatim.length ? '<div class="card" style="border:1.5px solid var(--warn);background:var(--warnbg);margin-bottom:14px"><h3 style="color:var(--warn)">Perlu Perbaikan — Pemilik Tidak Terhubung ('+yatim.length+')</h3>'
             + '<p class="desc" style="margin-bottom:12px">Materi berikut tidak terhubung ke data guru mana pun (misalnya karena data guru pernah ditempel ulang), sehingga tidak tampil di menu Materi gurunya. Klik <b>Edit</b> lalu pilih <b>Guru Pengunggah</b> yang benar untuk menghubungkannya kembali.</p>'
@@ -1216,12 +1408,14 @@
         + '<div class="field"><label style="font-size:.78rem;font-weight:700;color:var(--muted)">Mapel</label><select id="amMapel">'+mapelOpts+'</select></div>'
         + '<div class="field"><label style="font-size:.78rem;font-weight:700;color:var(--muted)">Kelas</label><select id="amKelas">'+kelasOpts+'</select></div>'
         + '<div class="field"><label style="font-size:.78rem;font-weight:700;color:var(--muted)">Guru Pengunggah</label><select id="amGuru">'+guruOpts+'</select></div>'
+        + '<div class="field"><label style="font-size:.78rem;font-weight:700;color:var(--muted)">Bab</label><select id="amBab">'+babOpts+'</select></div>'
         + '<span class="pill" style="align-self:center">Menampilkan '+list.length+' dari '+terhubung.length+' materi terhubung</span></div>'
         + (list.length ? '<div class="item-list">' + list.map(kartuMateriAdmin).join("") + '</div>'
             : emptyState(DB.materi.length ? "Tidak ada materi yang cocok dengan saringan ini." : "Belum ada materi yang diunggah guru."));
       document.getElementById("amMapel").onchange = function(e){ admMatFilter.mapel = e.target.value; gotoView("a-materi"); };
       document.getElementById("amKelas").onchange = function(e){ admMatFilter.kelas = e.target.value; gotoView("a-materi"); };
       document.getElementById("amGuru").onchange = function(e){ admMatFilter.guru = e.target.value; gotoView("a-materi"); };
+      document.getElementById("amBab").onchange = function(e){ admMatFilter.bab = e.target.value; gotoView("a-materi"); };
       ikatTombolMateriAdmin(c);
     }
     function formMateriAdmin(m){
@@ -1233,14 +1427,18 @@
       }).join("");
       openModal('<h3>Edit Materi</h3><div class="sub">Perubahan berlaku untuk tampilan siswa pada kelas-kelas tujuan. Mengganti Guru Pengunggah memindahkan materi ini ke daftar Materi guru tersebut.</div>'
         + '<div class="field"><label>Judul Materi</label><input id="famJudul" value="'+esc(m.title)+'" /></div>'
+        + '<div class="field"><label>Bab</label><input id="famBab" list="famBabList" value="'+esc(m.bab || "")+'" placeholder="Contoh: Bab 1 — Bilangan Berpangkat dan Bentuk Akar" autocomplete="off" />'+babDatalistHtml("fam", m.mapel)
+        + '<div style="color:var(--muted);font-size:.8rem;margin-top:4px">Boleh dikosongkan — materi masuk kelompok "Tanpa Bab".</div></div>'
         + '<div class="field"><label>Deskripsi / Ringkasan</label><textarea id="famDesc" rows="3">'+esc(m.desc)+'</textarea></div>'
-        + '<div class="field"><label>Link / URL Materi (video, PDF, presentasi, dsb.)</label><input id="famLink" value="'+esc(m.link)+'" placeholder="https://…" /></div>'
+        + '<div class="field"><label>Daftar Link Materi</label>'+linkEditorHtml("fam", materiLinks(m))+'</div>'
         + '<div class="field"><label>Mata Pelajaran</label><select id="famMapel">'+mapelOptions(m.mapel)+'</select></div>'
         + '<div class="field"><label>Kelas Tujuan — boleh lebih dari satu</label>'+kelasPickerHtml("famKelas", m.kelas)+'</div>'
         + '<div class="field"><label>Guru Pengunggah</label><select id="famGuru">'+guruOpts+'</select></div>'
         + '<div id="famGuruCatatan"></div>'
         + '<div class="foot"><button class="btn ghost" onclick="closeModal()">Batal</button><button class="btn" id="famSave">Simpan Materi</button></div>');
       ikatKelasPicker();
+      ikatLinkEditor("fam");
+      document.getElementById("famMapel").onchange = function(e){ segarkanBabList("fam", e.target.value); };
       var famGuruSel = document.getElementById("famGuru");
       var perbaruiCatatanGuru = function(){
         var tSel = DB.teachers.find(function(t){ return kunciGuru(t)===famGuruSel.value; });
@@ -1256,10 +1454,13 @@
         if(!guru){ toast("Pilih guru pengunggah terlebih dahulu."); return; }
         var kelasAdm = kelasPickerValue("famKelas");
         if(!kelasAdm){ toast("Pilih minimal satu kelas tujuan."); return; }
-        var data = {title:judul, desc:document.getElementById("famDesc").value.trim(), link:document.getElementById("famLink").value.trim(),
+        var hasilLinkAdm = linkEditorValue("fam");
+        if(!hasilLinkAdm.ok){ toast(hasilLinkAdm.msg); return; }
+        var data = {title:judul, desc:document.getElementById("famDesc").value.trim(), bab:document.getElementById("famBab").value.trim(),
+          links:hasilLinkAdm.links, link:(hasilLinkAdm.links.length ? hasilLinkAdm.links[0].url : ""),
           mapel:document.getElementById("famMapel").value, kelas:kelasAdm};
         if(TERPUSAT()){
-          var rowMt = {judul:data.title, deskripsi:data.desc, link:data.link, mapel:data.mapel, kelas:data.kelas, guru_id:guru._id, guru_nama:guru.name};
+          var rowMt = {judul:data.title, deskripsi:data.desc, bab:data.bab, links:JSON.stringify(data.links), link:data.link, mapel:data.mapel, kelas:data.kelas, guru_id:guru._id, guru_nama:guru.name};
           api("update", {sheet:"Materi", id:m.id, row:rowMt})
             .then(function(r){ if(!r || !r.ok) throw new Error((r && r.error) || "Gagal menyimpan materi ke server."); return loadAll(); })
             .then(function(){ closeModal(); toast("Materi diperbarui."); gotoView("a-materi"); })
@@ -3015,15 +3216,18 @@
     function viewGuruMateri(c){
       var me = myTeacher();
       var list = DB.materi.filter(function(m){ return milikSaya(m); });
-      c.innerHTML = pageHead("Materi Saya — " + me.subject, "Bagikan materi pembelajaran beserta tautan pendukung kepada siswa.",
+      var groups = kelompokBab(list);
+      c.innerHTML = pageHead("Materi Saya — " + me.subject, "Materi dikelompokkan per bab. Semua link pendukung sebuah materi (file, video, presentasi, dsb.) terkumpul di kartunya masing-masing.",
           '<button class="btn" id="addBtn">+ Tambah Materi</button>')
-        + (list.length ? '<div class="item-list">' + list.map(function(m){
-            return '<div class="item"><div class="top"><div><h3>'+esc(m.title)+'</h3><div class="meta"><span class="pill">'+esc(m.mapel)+'</span> <span class="pill">Kelas '+esc(kelasTampil(m.kelas))+'</span></div></div>'
-              + '<div class="acts"><button class="btn small ghost" data-edit-materi="'+m.id+'">Edit</button><button class="btn small danger" data-del-materi="'+m.id+'">Hapus</button></div></div>'
-              + '<div class="body">'+esc(m.desc)+'</div>'
-              + (m.link ? '<div style="margin-top:8px"><a href="'+esc(m.link)+'" target="_blank" rel="noopener">Buka tautan materi ↗</a></div>' : '')
-              + '</div>';
-          }).join("") + '</div>' : emptyState("Belum ada materi. Klik \"+ Tambah Materi\" untuk membuat materi pertama Anda."));
+        + (list.length ? groups.map(function(g){
+            return babHeadHtml(g) + '<div class="item-list">' + g.items.map(function(m){
+              return '<div class="item"><div class="top"><div><h3>'+esc(m.title)+'</h3><div class="meta"><span class="pill">'+esc(m.mapel)+'</span> <span class="pill">Kelas '+esc(kelasTampil(m.kelas))+'</span></div></div>'
+                + '<div class="acts"><button class="btn small ghost" data-edit-materi="'+m.id+'">Edit</button><button class="btn small danger" data-del-materi="'+m.id+'">Hapus</button></div></div>'
+                + '<div class="body">'+esc(m.desc)+'</div>'
+                + materiLinksHtml(m)
+                + '</div>';
+            }).join("") + '</div>';
+          }).join("") : emptyState("Belum ada materi. Klik \"+ Tambah Materi\" untuk membuat materi pertama Anda."));
       document.getElementById("addBtn").onclick = function(){ formMateri(null); };
       Array.prototype.forEach.call(c.querySelectorAll("[data-edit-materi]"), function(b){
         b.onclick = function(){ formMateri(DB.materi.find(function(m){return m.id===b.getAttribute("data-edit-materi");})); };
@@ -3047,24 +3251,31 @@
     }
     function formMateri(m){
       var me = myTeacher();
-      var isEdit = !!m; m = m || {title:"", desc:"", link:"", mapel:me.subject, kelas:"7A"};
-      openModal('<h3>'+(isEdit?"Edit Materi":"Tambah Materi")+'</h3><div class="sub">Materi akan tampil di menu Materi siswa pada kelas-kelas tujuan yang dipilih.</div>'
-        + '<div class="field"><label>Judul Materi</label><input id="fmJudul" value="'+esc(m.title)+'" placeholder="Contoh: Bab 3 — Pecahan" /></div>'
+      var isEdit = !!m; m = m || {title:"", desc:"", link:"", bab:"", links:[], mapel:me.subject, kelas:"7A"};
+      openModal('<h3>'+(isEdit?"Edit Materi":"Tambah Materi")+'</h3><div class="sub">Materi akan tampil di menu Materi siswa pada kelas-kelas tujuan yang dipilih, terkumpul di dalam babnya.</div>'
+        + '<div class="field"><label>Judul Materi</label><input id="fmJudul" value="'+esc(m.title)+'" placeholder="Contoh: Bilangan Berpangkat" /></div>'
+        + '<div class="field"><label>Bab</label><input id="fmBab" list="fmBabList" value="'+esc(m.bab || "")+'" placeholder="Contoh: Bab 1 — Bilangan Berpangkat dan Bentuk Akar" autocomplete="off" />'+babDatalistHtml("fm", m.mapel)
+        + '<div style="color:var(--muted);font-size:.8rem;margin-top:4px">Pilih saran yang muncul agar ejaan bab sama dengan materi lain pada mapel ini, atau ketik nama bab baru. Boleh dikosongkan — materi masuk kelompok "Tanpa Bab".</div></div>'
         + '<div class="field"><label>Deskripsi / Ringkasan</label><textarea id="fmDesc" rows="3" placeholder="Tuliskan ringkasan isi materi…">'+esc(m.desc)+'</textarea></div>'
-        + '<div class="field"><label>Link / URL Materi (video, PDF, presentasi, dsb.)</label><input id="fmLink" value="'+esc(m.link)+'" placeholder="https://…" /></div>'
+        + '<div class="field"><label>Daftar Link Materi</label>'+linkEditorHtml("fm", materiLinks(m))+'</div>'
         + '<div class="field"><label>Mata Pelajaran</label><select id="fmMapel">'+mapelOptions(m.mapel)+'</select></div>'
         + '<div class="field"><label>Kelas Tujuan — boleh lebih dari satu</label>'+kelasPickerHtml("fmKelas", m.kelas)+'</div>'
         + '<div class="foot"><button class="btn ghost" onclick="closeModal()">Batal</button><button class="btn" id="fmSave">Simpan Materi</button></div>');
       ikatKelasPicker();
+      ikatLinkEditor("fm");
+      document.getElementById("fmMapel").onchange = function(e){ segarkanBabList("fm", e.target.value); };
       document.getElementById("fmSave").onclick = function(){
         var judul = document.getElementById("fmJudul").value.trim();
         if(!judul){ toast("Judul materi wajib diisi."); return; }
         var kelasM = kelasPickerValue("fmKelas");
         if(!kelasM){ toast("Pilih minimal satu kelas tujuan."); return; }
-        var data = {title:judul, desc:document.getElementById("fmDesc").value.trim(), link:document.getElementById("fmLink").value.trim(),
+        var hasilLink = linkEditorValue("fm");
+        if(!hasilLink.ok){ toast(hasilLink.msg); return; }
+        var data = {title:judul, desc:document.getElementById("fmDesc").value.trim(), bab:document.getElementById("fmBab").value.trim(),
+          links:hasilLink.links, link:(hasilLink.links.length ? hasilLink.links[0].url : ""),
           mapel:document.getElementById("fmMapel").value, kelas:kelasM, nip:me.nip};
         if(TERPUSAT()){
-          var rowMt = {judul:data.title, deskripsi:data.desc, link:data.link, mapel:data.mapel, kelas:data.kelas};
+          var rowMt = {judul:data.title, deskripsi:data.desc, bab:data.bab, links:JSON.stringify(data.links), link:data.link, mapel:data.mapel, kelas:data.kelas};
           var pMt = isEdit ? api("update", {sheet:"Materi", id:m.id, row:rowMt}) : api("create", {sheet:"Materi", row:rowMt});
           pMt.then(function(r){ if(!r || !r.ok) throw new Error((r && r.error) || "Gagal menyimpan materi ke server."); return loadAll(); })
             .then(function(){ closeModal(); toast(isEdit ? "Materi diperbarui." : "Materi ditambahkan."); gotoView("g-materi"); })
@@ -3504,15 +3715,48 @@
     }
     function guruName(nip){ var t = teacherByNip(nip); return t ? t.name : "Guru"; }
 
+    /* Mapel yang sedang dibuka siswa di menu Materi — hanya disimpan
+       di variabel tampilan selama aplikasi terbuka, bukan permanen. */
+    var siswaMateriMapel = null;
     function viewSiswaMateri(c){
       var me = myStudent();
       var list = DB.materi.filter(function(m){ return kelasMasuk(m, me.kelas); });
-      c.innerHTML = pageHead("Materi Pembelajaran", "Materi dari guru untuk kelas " + me.kelas + ". Selamat belajar!")
-        + (list.length ? '<div class="item-list">' + list.map(function(m){
-            return '<div class="item"><div class="top"><div><h3>'+esc(m.title)+'</h3><div class="meta"><span class="pill">'+esc(m.mapel)+'</span> <span class="pill">'+esc(guruName(m.nip))+'</span></div></div>'
-              + (m.link ? '<div class="acts"><a class="btn small" href="'+esc(m.link)+'" target="_blank" rel="noopener" style="text-decoration:none">Buka Materi ↗</a></div>' : '')
-              + '</div><div class="body">'+esc(m.desc)+'</div></div>';
+      /* Langkah 2: materi satu mapel, dikelompokkan per bab. */
+      if(siswaMateriMapel){
+        var diMapel = list.filter(function(m){ return m.mapel === siswaMateriMapel; });
+        if(diMapel.length){
+          var groups = kelompokBab(diMapel);
+          c.innerHTML = pageHead("Materi — " + siswaMateriMapel, "Materi " + siswaMateriMapel + " untuk kelas " + me.kelas + ", terkumpul per bab. Selamat belajar!",
+              '<button class="btn ghost" id="backMapel">← Kembali ke Pilihan Mapel</button>')
+            + groups.map(function(g){
+                return babHeadHtml(g) + '<div class="item-list">' + g.items.map(function(m){
+                  return '<div class="item"><div class="top"><div><h3>'+esc(m.title)+'</h3><div class="meta"><span class="pill">'+esc(guruName(m.nip))+'</span></div></div></div>'
+                    + '<div class="body">'+esc(m.desc)+'</div>'
+                    + materiLinksHtml(m)
+                    + '</div>';
+                }).join("") + '</div>';
+              }).join("");
+          document.getElementById("backMapel").onclick = function(){ siswaMateriMapel = null; gotoView("s-materi"); };
+          return;
+        }
+        siswaMateriMapel = null; /* mapel terpilih ternyata tak lagi punya materi untuk kelas ini */
+      }
+      /* Langkah 1: pilihan mata pelajaran yang benar-benar punya materi
+         untuk kelas siswa ini, lengkap dengan jumlah bab & materinya. */
+      var perMapel = {};
+      list.forEach(function(m){ (perMapel[m.mapel] = perMapel[m.mapel] || []).push(m); });
+      var mapels = Object.keys(perMapel).sort(function(a, b){ return a.toLowerCase() < b.toLowerCase() ? -1 : 1; });
+      c.innerHTML = pageHead("Materi Pembelajaran", "Pilih mata pelajaran untuk kelas " + me.kelas + ", lalu buka bab yang ingin dipelajari. Selamat belajar!")
+        + (mapels.length ? '<div class="mapel-grid">' + mapels.map(function(mp){
+            var items = perMapel[mp];
+            var jmlBab = kelompokBab(items).filter(function(g){ return g.bab !== ""; }).length;
+            return '<button type="button" class="mapel-card" data-pilih-mapel="'+esc(mp)+'"><b>'+esc(mp)+'</b>'
+              + '<span class="mc-meta">'+jmlBab+' bab · '+items.length+' materi</span>'
+              + '<span class="mc-buka">Buka Materi →</span></button>';
           }).join("") + '</div>' : emptyState("Belum ada materi untuk kelas " + me.kelas + "."));
+      Array.prototype.forEach.call(c.querySelectorAll("[data-pilih-mapel]"), function(b){
+        b.onclick = function(){ siswaMateriMapel = b.getAttribute("data-pilih-mapel"); gotoView("s-materi"); };
+      });
     }
 
     function viewSiswaTugas(c){
