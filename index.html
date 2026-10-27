@@ -286,6 +286,7 @@
         <div class="spacer"></div>
         <div class="userchip">
           <div class="who"><b id="whoName"></b><span id="whoRole"></span></div>
+          <button class="logout-btn" id="gantiPassBtn">Ganti Password</button>
           <button class="logout-btn" id="logoutBtn">Keluar</button>
         </div>
       </div>
@@ -384,7 +385,7 @@
       if(na === null && nb !== null) return 1;
       return a.toLowerCase() < b.toLowerCase() ? -1 : 1;
     }
-    /* Kelompokkan daftar materi per bab -> [{bab, label, items}] terurut. */
+    /* Kelompokkan daftar konten (materi/tugas/kuis/asesmen) per bab -> [{bab, label, items}] terurut. */
     function kelompokBab(list){
       var map = {}, keys = [];
       list.forEach(function(m){
@@ -416,16 +417,19 @@
           + '<span class="mlink-buka">Buka ↗</span></a>';
       }).join("") + '</div>';
     }
-    function babHeadHtml(g){
-      return '<div class="bab-head"><h3>'+esc(g.label)+'</h3><span class="pill">'+g.items.length+' materi</span></div>';
+    function babHeadHtml(g, satuan){
+      return '<div class="bab-head"><h3>'+esc(g.label)+'</h3><span class="pill">'+g.items.length+' '+(satuan || "materi")+'</span></div>';
     }
     /* Saran nama bab untuk mapel tertentu (dari bab yang sudah dipakai
-       pada mapel yang sama) agar ejaan bab konsisten antar-materi. */
+       pada mapel yang sama di SEMUA konten — Materi, Tugas, Kuis, dan
+       Asesmen) agar ejaan bab konsisten antarmenu. */
     function babDatalistHtml(prefix, mapel){
       var set = [];
-      DB.materi.forEach(function(m){
-        var b = String(m.bab == null ? "" : m.bab).trim();
-        if(b && m.mapel === mapel && set.indexOf(b) < 0) set.push(b);
+      [DB.materi, DB.tugas, DB.kuis, DB.asesmen].forEach(function(koleksi){
+        (koleksi || []).forEach(function(m){
+          var b = String(m.bab == null ? "" : m.bab).trim();
+          if(b && m.mapel === mapel && set.indexOf(b) < 0) set.push(b);
+        });
       });
       set.sort(urutBab);
       return '<datalist id="'+prefix+'BabList">' + set.map(function(b){ return '<option value="'+esc(b)+'"></option>'; }).join("") + '</datalist>';
@@ -557,10 +561,10 @@
         {id:"m4", title:"Ekosistem dan Interaksi Makhluk Hidup", desc:"Komponen biotik dan abiotik, rantai makanan, jaring-jaring makanan, dan simbiosis di lingkungan sekitar kita.", bab:"Bab 1 — Ekosistem", link:"https://sumber.belajar.kemdikbud.go.id", links:[{label:"File Materi Ekosistem (Rumah Belajar)", jenis:"File Materi", url:"https://sumber.belajar.kemdikbud.go.id"}], mapel:"IPA", kelas:"7A", nip:G2}
       ];
       var tugas = [
-        {id:"t1", title:"Latihan PLSV — Soal Cerita", desc:"Kerjakan soal cerita PLSV nomor 1–10 di buku tugas, foto hasilnya, lalu tuliskan ringkasan jawaban dan cara pengerjaan pada kolom jawaban.", kelas:"7A", mapel:"Matematika", deadline:"2026-10-27", link:"", nip:G1},
-        {id:"t2", title:"Proyek Data Kelas — Statistika", desc:"Kumpulkan data tinggi badan teman sekelas, hitung mean, median, dan modusnya, lalu tuliskan hasilnya pada kolom jawaban.", kelas:"8A", mapel:"Matematika", deadline:"2026-10-29", link:"", nip:G1},
-        {id:"t3", title:"Tugas Kesebangunan — Mengukur Tinggi Pohon", desc:"Dengan metode bayangan, perkirakan tinggi tiang bendera sekolah. Tuliskan data pengukuran dan perhitungan kesebangunannya.", kelas:"9A", mapel:"Matematika", deadline:"2026-11-02", link:"", nip:G1},
-        {id:"t4", title:"Pengamatan Ekosistem Sekolah", desc:"Amati lingkungan sekolah selama 15 menit, catat komponen biotik dan abiotik yang ditemukan, lalu tuliskan pada kolom jawaban.", kelas:"7A", mapel:"IPA", deadline:"2026-10-28", link:"", nip:G2}
+        {id:"t1", title:"Latihan PLSV — Soal Cerita", desc:"Kerjakan soal cerita PLSV nomor 1–10 di buku tugas, foto hasilnya, lalu tuliskan ringkasan jawaban dan cara pengerjaan pada kolom jawaban.", kelas:"7A", mapel:"Matematika", deadline:"2026-10-27", link:"", bab:"Bab 1 — Persamaan Linear Satu Variabel", nip:G1},
+        {id:"t2", title:"Proyek Data Kelas — Statistika", desc:"Kumpulkan data tinggi badan teman sekelas, hitung mean, median, dan modusnya, lalu tuliskan hasilnya pada kolom jawaban.", kelas:"8A", mapel:"Matematika", deadline:"2026-10-29", link:"", bab:"Bab 2 — Statistika", nip:G1},
+        {id:"t3", title:"Tugas Kesebangunan — Mengukur Tinggi Pohon", desc:"Dengan metode bayangan, perkirakan tinggi tiang bendera sekolah. Tuliskan data pengukuran dan perhitungan kesebangunannya.", kelas:"9A", mapel:"Matematika", deadline:"2026-11-02", link:"", bab:"Bab 1 — Kesebangunan dan Kekongruenan", nip:G1},
+        {id:"t4", title:"Pengamatan Ekosistem Sekolah", desc:"Amati lingkungan sekolah selama 15 menit, catat komponen biotik dan abiotik yang ditemukan, lalu tuliskan pada kolom jawaban.", kelas:"7A", mapel:"IPA", deadline:"2026-10-28", link:"", bab:"Bab 1 — Ekosistem", nip:G2}
       ];
       function sub(tugasId, nisn, answer, score){ return {id:uid("sub"), tugasId:tugasId, nisn:nisn, answer:answer, score:score, at:"2026-10-18"}; }
       var submissions = [
@@ -582,7 +586,7 @@
         sub("t4","0087651204","Biotik: pohon, rumput, kucing. Abiotik: tanah, udara.",72)
       ];
       var kuis = [
-        {id:"k1", title:"Kuis PLSV — Matematika Kelas 7A", mapel:"Matematika", kelas:"7A", nip:G1, link:"", questions:[
+        {id:"k1", title:"Kuis PLSV — Matematika Kelas 7A", mapel:"Matematika", kelas:"7A", nip:G1, link:"", bab:"Bab 1 — Persamaan Linear Satu Variabel", questions:[
           {q:"Nilai x yang memenuhi persamaan 3x + 5 = 20 adalah …", options:["3","5","7","15"], answer:1},
           {q:"Himpunan penyelesaian dari 2x − 4 = 10 adalah …", options:["5","6","7","8"], answer:2},
           {q:"Jika 5x = 45, maka nilai x adalah …", options:["7","8","9","10"], answer:2},
@@ -596,10 +600,10 @@
         {id:uid("kr"), kuisId:"k1", nisn:"0087651204", score:60, at:"2026-10-18"}
       ];
       var asesmen = [
-        {id:"a1", title:"Asesmen PLSV dan Pertidaksamaan", desc:"Jawablah soal uraian berikut dengan langkah pengerjaan yang lengkap dan runtut.", mapel:"Matematika", kelas:"7A", nip:G1, link:"", questions:["Tentukan nilai x dari persamaan 4(x − 2) = 3x + 5, tuliskan langkahnya!","Sebuah bilangan dikalikan 3 lalu dikurangi 7 hasilnya 20. Tentukan bilangan tersebut dengan model PLSV!","Tentukan himpunan penyelesaian pertidaksamaan 2x + 3 ≤ 11 untuk x bilangan asli!"]},
-        {id:"a2", title:"Asesmen Statistika", desc:"Kerjakan soal uraian statistika berikut dengan tabel bantu bila diperlukan.", mapel:"Matematika", kelas:"8A", nip:G1, link:"", questions:["Data nilai ulangan: 6, 7, 8, 7, 9, 6, 8, 7. Tentukan mean, median, dan modusnya!","Jelaskan perbedaan mean dan median beserta contohnya!"]},
-        {id:"a3", title:"Asesmen Kesebangunan", desc:"Kerjakan dengan gambar sketsa dan langkah yang jelas.", mapel:"Matematika", kelas:"9A", nip:G1, link:"", questions:["Dua segitiga dikatakan sebangun apabila memenuhi syarat apa saja? Jelaskan!","Sebuah foto berukuran 12 cm × 8 cm diperbesar sehingga lebarnya menjadi 20 cm. Tentukan panjang foto setelah diperbesar!"]},
-        {id:"a4", title:"Asesmen Ekosistem", desc:"Jawablah dengan bahasa sendiri berdasarkan pengamatan di lingkungan sekolah.", mapel:"IPA", kelas:"7A", nip:G2, link:"", questions:["Jelaskan perbedaan komponen biotik dan abiotik beserta masing-masing dua contohnya!","Buatlah satu contoh rantai makanan yang ada di lingkungan sekolah!"]}
+        {id:"a1", title:"Asesmen PLSV dan Pertidaksamaan", desc:"Jawablah soal uraian berikut dengan langkah pengerjaan yang lengkap dan runtut.", mapel:"Matematika", kelas:"7A", nip:G1, link:"", bab:"Bab 1 — Persamaan Linear Satu Variabel", questions:["Tentukan nilai x dari persamaan 4(x − 2) = 3x + 5, tuliskan langkahnya!","Sebuah bilangan dikalikan 3 lalu dikurangi 7 hasilnya 20. Tentukan bilangan tersebut dengan model PLSV!","Tentukan himpunan penyelesaian pertidaksamaan 2x + 3 ≤ 11 untuk x bilangan asli!"]},
+        {id:"a2", title:"Asesmen Statistika", desc:"Kerjakan soal uraian statistika berikut dengan tabel bantu bila diperlukan.", mapel:"Matematika", kelas:"8A", nip:G1, link:"", bab:"Bab 2 — Statistika", questions:["Data nilai ulangan: 6, 7, 8, 7, 9, 6, 8, 7. Tentukan mean, median, dan modusnya!","Jelaskan perbedaan mean dan median beserta contohnya!"]},
+        {id:"a3", title:"Asesmen Kesebangunan", desc:"Kerjakan dengan gambar sketsa dan langkah yang jelas.", mapel:"Matematika", kelas:"9A", nip:G1, link:"", bab:"Bab 1 — Kesebangunan dan Kekongruenan", questions:["Dua segitiga dikatakan sebangun apabila memenuhi syarat apa saja? Jelaskan!","Sebuah foto berukuran 12 cm × 8 cm diperbesar sehingga lebarnya menjadi 20 cm. Tentukan panjang foto setelah diperbesar!"]},
+        {id:"a4", title:"Asesmen Ekosistem", desc:"Jawablah dengan bahasa sendiri berdasarkan pengamatan di lingkungan sekolah.", mapel:"IPA", kelas:"7A", nip:G2, link:"", bab:"Bab 1 — Ekosistem", questions:["Jelaskan perbedaan komponen biotik dan abiotik beserta masing-masing dua contohnya!","Buatlah satu contoh rantai makanan yang ada di lingkungan sekolah!"]}
       ];
       function ares(aid, nisn, score){ return {id:uid("ar"), asesmenId:aid, nisn:nisn, answers:["(Jawaban tertulis siswa — dinilai guru)"], score:score, at:"2026-10-18"}; }
       var asesmenResults = [
@@ -836,7 +840,7 @@
           desc = d.slice(0, pos).replace(/\s+$/, "");
           questions = d.slice(pos + 8).split("\n").map(function(s){ return s.trim(); }).filter(Boolean);
         }
-        return {id:String(a.id), title:a.judul || "", desc:desc, mapel:a.mapel || "", kelas:a.kelas || "", nip:nipOf(a.guru_id), guruId:String(a.guru_id || ""), guruNama:a.guru_nama || "", link:a.link || "", questions:questions};
+        return {id:String(a.id), title:a.judul || "", desc:desc, mapel:a.mapel || "", kelas:a.kelas || "", nip:nipOf(a.guru_id), guruId:String(a.guru_id || ""), guruNama:a.guru_nama || "", link:a.link || "", bab:a.bab || "", questions:questions};
       }
       function splitJawaban(j){
         var s = String(j || "");
@@ -858,9 +862,9 @@
             nisn: peranU === "siswa" ? (nisnOf(u.ref_id) || null) : null};
         }),
         materi: materis.map(function(m){ return {id:String(m.id), title:m.judul || "", desc:m.deskripsi || "", link:m.link || "", bab:m.bab || "", links:(m.links == null ? "" : m.links), mapel:m.mapel || "", kelas:String(m.kelas || ""), nip:nipOf(m.guru_id), guruId:String(m.guru_id || ""), guruNama:m.guru_nama || ""}; }),
-        tugas: tugass.map(function(t){ return {id:String(t.id), title:t.judul || "", desc:t.deskripsi || "", kelas:String(t.kelas || ""), mapel:t.mapel || "", deadline:normDate(t.deadline), link:t.link || "", nip:nipOf(t.guru_id), guruId:String(t.guru_id || ""), guruNama:t.guru_nama || ""}; }),
+        tugas: tugass.map(function(t){ return {id:String(t.id), title:t.judul || "", desc:t.deskripsi || "", kelas:String(t.kelas || ""), mapel:t.mapel || "", deadline:normDate(t.deadline), link:t.link || "", bab:t.bab || "", nip:nipOf(t.guru_id), guruId:String(t.guru_id || ""), guruNama:t.guru_nama || ""}; }),
         submissions: tKumpul.map(function(x){ return {id:String(x.id), tugasId:String(x.tugas_id), nisn:nisnOf(x.siswa_id), answer:x.jawaban || "", link:x.link || "", score:scoreOf(x.nilai), at:normDate(x.submitted_at)}; }),
-        kuis: kuiss.map(function(k){ return {id:String(k.id), title:k.judul || "", mapel:k.mapel || "", kelas:String(k.kelas || ""), nip:nipOf(k.guru_id), guruId:String(k.guru_id || ""), guruNama:k.guru_nama || "", link:k.link || "", questions:soalByKuis[String(k.id)] || [], _soalIds:soalIdsByKuis[String(k.id)] || []}; }),
+        kuis: kuiss.map(function(k){ return {id:String(k.id), title:k.judul || "", mapel:k.mapel || "", kelas:String(k.kelas || ""), nip:nipOf(k.guru_id), guruId:String(k.guru_id || ""), guruNama:k.guru_nama || "", link:k.link || "", bab:k.bab || "", questions:soalByKuis[String(k.id)] || [], _soalIds:soalIdsByKuis[String(k.id)] || []}; }),
         kuisResults: kHasil.map(function(x){ return {id:String(x.id), kuisId:String(x.kuis_id), nisn:nisnOf(x.siswa_id), score:Number(x.skor) || 0, at:normDate(x.submitted_at)}; }),
         asesmen: asesmens.map(parseAsesmen),
         asesmenResults: aKumpul.map(function(x){ return {id:String(x.id), asesmenId:String(x.asesmen_id), nisn:nisnOf(x.siswa_id), answers:splitJawaban(x.jawaban), score:scoreOf(x.nilai), at:normDate(x.submitted_at)}; }),
@@ -1226,6 +1230,65 @@
       }
     });
     document.getElementById("logoutBtn").addEventListener("click", doLogout);
+    document.getElementById("gantiPassBtn").addEventListener("click", function(){ formGantiPasswordSaya(); });
+
+    /* ---- Ganti Password Sendiri (semua peran yang sedang login) ----
+       Tambahan di samping Kelola Password milik Admin (yang tetap
+       berfungsi untuk me-reset akun siapa pun yang lupa). Di sini
+       pengguna mengganti password akunnya SENDIRI: password lama wajib
+       diisi dan diverifikasi — mode lokal dibandingkan dengan data
+       pengguna lokal; mode terpusat diverifikasi server lewat aksi
+       "change_password" yang sama dengan Kelola Password, ditambah
+       parameter old_password (server memeriksa kecocokannya untuk
+       pengguna biasa). Sesi login saat ini tidak diputus. */
+    function formGantiPasswordSaya(){
+      if(!session) return;
+      openModal('<h3>Ganti Password</h3><div class="sub">Ganti password akun Anda sendiri — username <b>'+esc(session.username)+'</b> ('+esc(session.role)+'). Password baru dipakai untuk login berikutnya; Anda tetap masuk pada sesi ini.</div>'
+        + '<div id="gpErr" class="login-err hidden"></div>'
+        + '<div class="field"><label>Password Lama</label><input id="gpLama" type="password" autocomplete="current-password" placeholder="Masukkan password yang sekarang dipakai" /></div>'
+        + '<div class="field"><label>Password Baru</label><input id="gpBaru" type="password" autocomplete="new-password" placeholder="Minimal 6 karakter, berbeda dari password lama" /></div>'
+        + '<div class="field"><label>Konfirmasi Password Baru</label><input id="gpBaru2" type="password" autocomplete="new-password" placeholder="Ketik ulang password baru" /></div>'
+        + '<div class="foot"><button class="btn ghost" onclick="closeModal()">Batal</button><button class="btn" id="gpSave">Simpan Password Baru</button></div>');
+      function gpGagal(msg){
+        var el = document.getElementById("gpErr");
+        if(el){ el.textContent = msg; el.classList.remove("hidden"); }
+        else toast(msg);
+      }
+      document.getElementById("gpSave").onclick = function(){
+        var lama = document.getElementById("gpLama").value;
+        var baru = document.getElementById("gpBaru").value;
+        var baru2 = document.getElementById("gpBaru2").value;
+        var errEl = document.getElementById("gpErr");
+        if(errEl) errEl.classList.add("hidden");
+        if(!lama){ gpGagal("Password lama wajib diisi untuk verifikasi."); return; }
+        if(!baru){ gpGagal("Password baru wajib diisi."); return; }
+        if(baru.length < 6){ gpGagal("Password baru minimal 6 karakter."); return; }
+        if(baru === lama){ gpGagal("Password baru tidak boleh sama dengan password lama. Buatlah password yang berbeda."); return; }
+        if(baru !== baru2){ gpGagal("Konfirmasi password baru tidak sama. Ketik ulang password baru dengan benar."); return; }
+        if(TERPUSAT()){
+          var btn = document.getElementById("gpSave");
+          btn.disabled = true; btn.textContent = "Menyimpan ke server…";
+          api("change_password", {username:session.username, new_password:baru, old_password:lama}).then(function(r){
+            if(!r || !r.ok) throw new Error((r && r.error) || "Gagal mengubah password di server.");
+            catatKredensial(session.username, baru);
+            closeModal();
+            toast("Password berhasil diganti. Ingat password baru Anda dan gunakan untuk login berikutnya — Anda tetap masuk pada sesi ini.");
+          }).catch(function(e){
+            var b2 = document.getElementById("gpSave");
+            if(b2){ b2.disabled = false; b2.textContent = "Simpan Password Baru"; }
+            gpGagal(e && e.message ? e.message : "Gagal mengubah password. Periksa koneksi Anda lalu coba lagi.");
+          });
+          return;
+        }
+        var u = userByUsername(session.username);
+        if(!u){ gpGagal("Akun Anda tidak ditemukan pada data lokal perangkat ini."); return; }
+        if(u.password !== lama){ gpGagal("Password lama salah. Periksa kembali password yang sekarang Anda pakai."); return; }
+        u.password = baru; save();
+        catatKredensial(session.username, baru);
+        closeModal();
+        toast("Password berhasil diganti. Ingat password baru Anda dan gunakan untuk login berikutnya — Anda tetap masuk pada sesi ini.");
+      };
+    }
 
     /* ---------------- NAVIGASI ---------------- */
     function svgIcon(inner){ return '<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + inner + '</svg>'; }
@@ -3292,15 +3355,18 @@
     function viewGuruTugas(c){
       var me = myTeacher();
       var list = DB.tugas.filter(function(t){ return milikSaya(t); });
-      c.innerHTML = pageHead("Tugas — " + me.subject, "Buat tugas untuk kelas, pantau pengumpulan, dan beri nilai.",
+      var groups = kelompokBab(list);
+      c.innerHTML = pageHead("Tugas — " + me.subject, "Tugas dikelompokkan per bab. Buat tugas untuk kelas, pantau pengumpulan, dan beri nilai.",
           '<button class="btn" id="addBtn">+ Buat Tugas</button>')
-        + (list.length ? '<div class="item-list">' + list.map(function(t){
+        + (list.length ? groups.map(function(g){
+            return babHeadHtml(g, "tugas") + '<div class="item-list">' + g.items.map(function(t){
             var jml = DB.submissions.filter(function(s){return s.tugasId===t.id;}).length;
             var dinilai = DB.submissions.filter(function(s){return s.tugasId===t.id && s.score!==null && s.score!==undefined;}).length;
             return '<div class="item"><div class="top"><div><h3>'+esc(t.title)+'</h3><div class="meta"><span class="pill">'+esc(t.mapel)+'</span> <span class="pill">Kelas '+esc(kelasTampil(t.kelas))+'</span> <span class="pill">Batas: '+esc(t.deadline)+'</span> <span class="pill">'+jml+' mengumpulkan · '+dinilai+' dinilai</span></div></div>'
               + '<div class="acts"><button class="btn small" data-lihat-tugas="'+t.id+'">Lihat & Nilai Pengumpulan</button><button class="btn small danger" data-del-tugas="'+t.id+'">Hapus</button></div></div>'
               + '<div class="body">'+esc(t.desc)+'</div>' + extLinkHtml(t.link, "Buka Tautan Tugas") + '</div>';
-          }).join("") + '</div>' : emptyState("Belum ada tugas. Klik \"+ Buat Tugas\" untuk memulai."));
+          }).join("") + '</div>';
+          }).join("") : emptyState("Belum ada tugas. Klik \"+ Buat Tugas\" untuk memulai."));
       document.getElementById("addBtn").onclick = function(){ formTugas(); };
       Array.prototype.forEach.call(c.querySelectorAll("[data-lihat-tugas]"), function(b){
         b.onclick = function(){ detailTugas(b.getAttribute("data-lihat-tugas")); };
@@ -3329,8 +3395,10 @@
     }
     function formTugas(){
       var me = myTeacher();
-      openModal('<h3>Buat Tugas Baru</h3><div class="sub">Tugas langsung tampil di menu Tugas siswa pada kelas-kelas tujuan yang dipilih.</div>'
+      openModal('<h3>Buat Tugas Baru</h3><div class="sub">Tugas langsung tampil di menu Tugas siswa pada kelas-kelas tujuan yang dipilih, terkumpul di dalam babnya.</div>'
         + '<div class="field"><label>Judul Tugas</label><input id="ftJudul" placeholder="Contoh: Latihan Bab 2" /></div>'
+        + '<div class="field"><label>Bab</label><input id="ftBab" list="ftBabList" value="" placeholder="Contoh: Bab 1 — Bilangan Berpangkat dan Bentuk Akar" autocomplete="off" />'+babDatalistHtml("ft", me.subject)
+        + '<div style="color:var(--muted);font-size:.8rem;margin-top:4px">Pilih saran yang muncul agar ejaan bab sama dengan konten lain pada mapel ini, atau ketik nama bab baru. Boleh dikosongkan — tugas masuk kelompok "Tanpa Bab".</div></div>'
         + '<div class="field"><label>Deskripsi / Instruksi</label><textarea id="ftDesc" rows="3" placeholder="Jelaskan instruksi pengerjaan…"></textarea></div>'
         + '<div class="field"><label>Link Eksternal (opsional)</label><input id="ftLink" type="url" placeholder="https://… — contoh: Google Form, Quizizz, Wordwall" /><div style="color:var(--muted);font-size:.8rem;margin-top:4px">Diisi bila tugas dikerjakan lewat layanan lain. Tautan akan tampil sebagai tombol di halaman tugas siswa.</div></div>'
         + '<div class="field"><label>Mata Pelajaran</label><select id="ftMapel">'+mapelOptions(me.subject)+'</select></div>'
@@ -3338,15 +3406,17 @@
         + '<div class="field"><label>Batas Pengumpulan (Deadline)</label><input id="ftDeadline" type="date" /></div>'
         + '<div class="foot"><button class="btn ghost" onclick="closeModal()">Batal</button><button class="btn" id="ftSave">Simpan Tugas</button></div>');
       ikatKelasPicker();
+      document.getElementById("ftMapel").onchange = function(e){ segarkanBabList("ft", e.target.value); };
       document.getElementById("ftSave").onclick = function(){
         var judul = document.getElementById("ftJudul").value.trim();
         if(!judul){ toast("Judul tugas wajib diisi."); return; }
         var kelasT = kelasPickerValue("ftKelas");
         if(!kelasT){ toast("Pilih minimal satu kelas tujuan."); return; }
+        var babT = document.getElementById("ftBab").value.trim();
         if(TERPUSAT()){
           api("create", {sheet:"Tugas", row:{judul:judul, deskripsi:document.getElementById("ftDesc").value.trim(),
             mapel:document.getElementById("ftMapel").value, kelas:kelasT,
-            deadline:document.getElementById("ftDeadline").value || "-", link:normLink(document.getElementById("ftLink").value)}})
+            deadline:document.getElementById("ftDeadline").value || "-", link:normLink(document.getElementById("ftLink").value), bab:babT}})
             .then(function(r){ if(!r || !r.ok) throw new Error((r && r.error) || "Gagal membuat tugas di server."); return loadAll(); })
             .then(function(){ closeModal(); toast("Tugas berhasil dibuat."); gotoView("g-tugas"); })
             .catch(remoteFail);
@@ -3354,7 +3424,7 @@
         }
         DB.tugas.push({id:uid("t"), title:judul, desc:document.getElementById("ftDesc").value.trim(),
           mapel:document.getElementById("ftMapel").value, kelas:kelasT,
-          deadline:document.getElementById("ftDeadline").value || "-", link:normLink(document.getElementById("ftLink").value), nip:me.nip});
+          deadline:document.getElementById("ftDeadline").value || "-", link:normLink(document.getElementById("ftLink").value), bab:babT, nip:me.nip});
         save(); closeModal(); toast("Tugas berhasil dibuat."); gotoView("g-tugas");
       };
     }
@@ -3399,14 +3469,17 @@
     function viewGuruKuis(c){
       var me = myTeacher();
       var list = DB.kuis.filter(function(k){ return milikSaya(k); });
-      c.innerHTML = pageHead("Kuis — " + me.subject, "Buat kuis pilihan ganda; nilai siswa terhitung otomatis dari kunci jawaban.",
+      var groups = kelompokBab(list);
+      c.innerHTML = pageHead("Kuis — " + me.subject, "Kuis dikelompokkan per bab. Buat kuis pilihan ganda; nilai siswa terhitung otomatis dari kunci jawaban.",
           '<button class="btn" id="addBtn">+ Buat Kuis</button>')
-        + (list.length ? '<div class="item-list">' + list.map(function(k){
+        + (list.length ? groups.map(function(g){
+            return babHeadHtml(g, "kuis") + '<div class="item-list">' + g.items.map(function(k){
             var hasil = DB.kuisResults.filter(function(r){return r.kuisId===k.id;});
             var rata = hasil.length ? Math.round(hasil.reduce(function(a,b){return a+b.score;},0)/hasil.length) : null;
             return '<div class="item"><div class="top"><div><h3>'+esc(k.title)+'</h3><div class="meta"><span class="pill">'+esc(k.mapel)+'</span> <span class="pill">Kelas '+esc(kelasTampil(k.kelas))+'</span> <span class="pill">'+k.questions.length+' soal</span> <span class="pill">'+hasil.length+' siswa mengerjakan'+(rata!==null ? " · rata-rata "+rata : "")+'</span></div></div>'
               + '<div class="acts"><button class="btn small" data-hasil-kuis="'+k.id+'">Lihat Hasil Siswa</button><button class="btn small danger" data-del-kuis="'+k.id+'">Hapus</button></div></div>' + extLinkHtml(k.link, "Buka Tautan Kuis") + '</div>';
-          }).join("") + '</div>' : emptyState("Belum ada kuis. Klik \"+ Buat Kuis\" untuk membuat kuis pilihan ganda."));
+          }).join("") + '</div>';
+          }).join("") : emptyState("Belum ada kuis. Klik \"+ Buat Kuis\" untuk membuat kuis pilihan ganda."));
       document.getElementById("addBtn").onclick = function(){ formKuis(); };
       Array.prototype.forEach.call(c.querySelectorAll("[data-del-kuis]"), function(b){
         b.onclick = function(){
@@ -3446,8 +3519,10 @@
     }
     function formKuis(){
       var me = myTeacher();
-      openModal('<h3>Buat Kuis Pilihan Ganda</h3><div class="sub">Tulis soal, empat opsi jawaban, dan tentukan kunci jawabannya — atau cukup isi link eksternal bila kuis dikerjakan di layanan lain (mis. Quizizz).</div>'
+      openModal('<h3>Buat Kuis Pilihan Ganda</h3><div class="sub">Tulis soal, empat opsi jawaban, dan tentukan kunci jawabannya — atau cukup isi link eksternal bila kuis dikerjakan di layanan lain (mis. Quizizz). Kuis terkumpul di dalam babnya.</div>'
         + '<div class="field"><label>Judul Kuis</label><input id="fkJudul" placeholder="Contoh: Kuis Bab 1 — Bilangan" /></div>'
+        + '<div class="field"><label>Bab</label><input id="fkBab" list="fkBabList" value="" placeholder="Contoh: Bab 1 — Bilangan Berpangkat dan Bentuk Akar" autocomplete="off" />'+babDatalistHtml("fk", me.subject)
+        + '<div style="color:var(--muted);font-size:.8rem;margin-top:4px">Pilih saran yang muncul agar ejaan bab sama dengan konten lain pada mapel ini, atau ketik nama bab baru. Boleh dikosongkan — kuis masuk kelompok "Tanpa Bab".</div></div>'
         + '<div class="field"><label>Mata Pelajaran</label><select id="fkMapel">'+mapelOptions(me.subject)+'</select></div>'
         + '<div class="field"><label>Kelas Tujuan — boleh lebih dari satu</label>'+kelasPickerHtml("fkKelas", "7A")+'</div>'
         + '<div class="field"><label>Link Eksternal (opsional)</label><input id="fkLink" type="url" placeholder="https://… — contoh: Quizizz, Google Form, Wordwall" /><div style="color:var(--muted);font-size:.8rem;margin-top:4px">Bila diisi, siswa dapat membuka tautan ini dari halaman kuis. Soal di bawah boleh dikosongkan bila seluruh kuis dikerjakan lewat tautan tersebut.</div></div>'
@@ -3455,6 +3530,7 @@
         + '<button class="btn ghost small" id="fkTambah">+ Tambah Soal</button>'
         + '<div class="foot"><button class="btn ghost" onclick="closeModal()">Batal</button><button class="btn" id="fkSave">Simpan Kuis</button></div>', true);
       ikatKelasPicker();
+      document.getElementById("fkMapel").onchange = function(e){ segarkanBabList("fk", e.target.value); };
       var soalBox = document.getElementById("fkSoal");
       function addSoal(){
         var n = soalBox.children.length + 1;
@@ -3487,8 +3563,8 @@
         if(!ok){ toast("Ada soal yang belum lengkap — lengkapi pertanyaan dan keempat opsinya, atau kosongkan seluruh blok soalnya."); return; }
         if(!qs.length && !linkK){ toast("Isi minimal satu soal, atau isi link eksternal (mis. Quizizz) bila kuis dikerjakan di layanan lain."); return; }
         if(TERPUSAT()){
-          var judulK = judul, mapelK = document.getElementById("fkMapel").value, kelasK = kelasKz;
-          api("create", {sheet:"Kuis", row:{judul:judulK, mapel:mapelK, kelas:kelasK, link:linkK}})
+          var judulK = judul, mapelK = document.getElementById("fkMapel").value, kelasK = kelasKz, babK = document.getElementById("fkBab").value.trim();
+          api("create", {sheet:"Kuis", row:{judul:judulK, mapel:mapelK, kelas:kelasK, link:linkK, bab:babK}})
             .then(function(r){
               if(!r || !r.ok || !r.id) throw new Error((r && r.error) || "Gagal membuat kuis di server.");
               var kid = r.id;
@@ -3505,7 +3581,7 @@
             .catch(remoteFail);
           return;
         }
-        DB.kuis.push({id:uid("k"), title:judul, mapel:document.getElementById("fkMapel").value, kelas:kelasKz, nip:me.nip, link:linkK, questions:qs});
+        DB.kuis.push({id:uid("k"), title:judul, mapel:document.getElementById("fkMapel").value, kelas:kelasKz, nip:me.nip, link:linkK, bab:document.getElementById("fkBab").value.trim(), questions:qs});
         save(); closeModal(); toast(qs.length ? "Kuis \""+judul+"\" dibuat dengan "+qs.length+" soal." : "Kuis \""+judul+"\" dibuat dengan tautan eksternal."); gotoView("g-kuis");
       };
     }
@@ -3514,15 +3590,18 @@
     function viewGuruAsesmen(c){
       var me = myTeacher();
       var list = DB.asesmen.filter(function(a){ return milikSaya(a); });
-      c.innerHTML = pageHead("Asesmen — " + me.subject, "Buat asesmen uraian dan beri nilai pada jawaban siswa.",
+      var groups = kelompokBab(list);
+      c.innerHTML = pageHead("Asesmen — " + me.subject, "Asesmen dikelompokkan per bab. Buat asesmen uraian dan beri nilai pada jawaban siswa.",
           '<button class="btn" id="addBtn">+ Buat Asesmen</button>')
-        + (list.length ? '<div class="item-list">' + list.map(function(a){
+        + (list.length ? groups.map(function(g){
+            return babHeadHtml(g, "asesmen") + '<div class="item-list">' + g.items.map(function(a){
             var hasil = DB.asesmenResults.filter(function(r){return r.asesmenId===a.id;});
             var dinilai = hasil.filter(function(r){return r.score!==null && r.score!==undefined;}).length;
             return '<div class="item"><div class="top"><div><h3>'+esc(a.title)+'</h3><div class="meta"><span class="pill">'+esc(a.mapel)+'</span> <span class="pill">Kelas '+esc(kelasTampil(a.kelas))+'</span> <span class="pill">'+(a.questions.length ? a.questions.length+' soal uraian' : 'Soal uraian')+'</span> <span class="pill">'+hasil.length+' jawaban · '+dinilai+' dinilai</span></div></div>'
               + '<div class="acts"><button class="btn small" data-nilai-asesmen="'+a.id+'">Beri Nilai</button><button class="btn small danger" data-del-asesmen="'+a.id+'">Hapus</button></div></div>'
               + '<div class="body">'+esc(a.desc)+'</div>' + extLinkHtml(a.link, "Buka Tautan Asesmen") + '</div>';
-          }).join("") + '</div>' : emptyState("Belum ada asesmen. Klik \"+ Buat Asesmen\" untuk memulai."));
+          }).join("") + '</div>';
+          }).join("") : emptyState("Belum ada asesmen. Klik \"+ Buat Asesmen\" untuk memulai."));
       document.getElementById("addBtn").onclick = function(){ formAsesmen(); };
       Array.prototype.forEach.call(c.querySelectorAll("[data-del-asesmen]"), function(b){
         b.onclick = function(){
@@ -3551,8 +3630,10 @@
     }
     function formAsesmen(){
       var me = myTeacher();
-      openModal('<h3>Buat Asesmen Baru</h3><div class="sub">Satu soal uraian per baris pada kolom soal.</div>'
+      openModal('<h3>Buat Asesmen Baru</h3><div class="sub">Satu soal uraian per baris pada kolom soal. Asesmen terkumpul di dalam babnya.</div>'
         + '<div class="field"><label>Judul Asesmen</label><input id="faJudul" placeholder="Contoh: Asesmen Tengah Semester" /></div>'
+        + '<div class="field"><label>Bab</label><input id="faBab" list="faBabList" value="" placeholder="Contoh: Bab 1 — Bilangan Berpangkat dan Bentuk Akar" autocomplete="off" />'+babDatalistHtml("fa", me.subject)
+        + '<div style="color:var(--muted);font-size:.8rem;margin-top:4px">Pilih saran yang muncul agar ejaan bab sama dengan konten lain pada mapel ini, atau ketik nama bab baru. Boleh dikosongkan — asesmen masuk kelompok "Tanpa Bab".</div></div>'
         + '<div class="field"><label>Deskripsi / Petunjuk</label><textarea id="faDesc" rows="2" placeholder="Petunjuk pengerjaan…"></textarea></div>'
         + '<div class="field"><label>Link Eksternal (opsional)</label><input id="faLink" type="url" placeholder="https://… — contoh: Google Form, Quizizz, Wordwall" /><div style="color:var(--muted);font-size:.8rem;margin-top:4px">Diisi bila asesmen dikerjakan lewat layanan lain. Tautan tampil sebagai tombol di halaman asesmen siswa; soal uraian di bawah boleh dikosongkan bila seluruh asesmen lewat tautan tersebut.</div></div>'
         + '<div class="field"><label>Mata Pelajaran</label><select id="faMapel">'+mapelOptions(me.subject)+'</select></div>'
@@ -3560,6 +3641,7 @@
         + '<div class="field"><label>Soal Uraian (satu soal per baris)</label><textarea id="faSoal" rows="4" placeholder="Soal pertama…&#10;Soal kedua…"></textarea></div>'
         + '<div class="foot"><button class="btn ghost" onclick="closeModal()">Batal</button><button class="btn" id="faSave">Simpan Asesmen</button></div>');
       ikatKelasPicker();
+      document.getElementById("faMapel").onchange = function(e){ segarkanBabList("fa", e.target.value); };
       document.getElementById("faSave").onclick = function(){
         var judul = document.getElementById("faJudul").value.trim();
         var soal = document.getElementById("faSoal").value.split("\n").map(function(s){return s.trim();}).filter(Boolean);
@@ -3575,14 +3657,14 @@
              penanda ini disembunyikan lagi saat data dimuat. */
           var deskripsiA = soal.length ? (descA + "\n\n[[SOAL]]\n" + soal.join("\n")) : descA;
           api("create", {sheet:"Asesmen", row:{judul:judul, deskripsi:deskripsiA,
-            mapel:document.getElementById("faMapel").value, kelas:kelasAs, link:linkA}})
+            mapel:document.getElementById("faMapel").value, kelas:kelasAs, link:linkA, bab:document.getElementById("faBab").value.trim()}})
             .then(function(r){ if(!r || !r.ok) throw new Error((r && r.error) || "Gagal membuat asesmen di server."); return loadAll(); })
             .then(function(){ closeModal(); toast("Asesmen berhasil dibuat."); gotoView("g-asesmen"); })
             .catch(remoteFail);
           return;
         }
         DB.asesmen.push({id:uid("a"), title:judul, desc:document.getElementById("faDesc").value.trim(),
-          mapel:document.getElementById("faMapel").value, kelas:kelasAs, nip:me.nip, link:linkA, questions:soal});
+          mapel:document.getElementById("faMapel").value, kelas:kelasAs, nip:me.nip, link:linkA, bab:document.getElementById("faBab").value.trim(), questions:soal});
         save(); closeModal(); toast("Asesmen berhasil dibuat."); gotoView("g-asesmen");
       };
     }
@@ -3762,8 +3844,10 @@
     function viewSiswaTugas(c){
       var me = myStudent();
       var list = DB.tugas.filter(function(t){ return kelasMasuk(t, me.kelas); });
-      c.innerHTML = pageHead("Tugas Saya", "Daftar tugas untuk kelas " + me.kelas + ". Kerjakan sebelum batas waktunya!")
-        + (list.length ? '<div class="item-list">' + list.map(function(t){
+      var groups = kelompokBab(list);
+      c.innerHTML = pageHead("Tugas Saya", "Daftar tugas untuk kelas " + me.kelas + ", terkumpul per bab. Kerjakan sebelum batas waktunya!")
+        + (list.length ? groups.map(function(g){
+            return babHeadHtml(g, "tugas") + '<div class="item-list">' + g.items.map(function(t){
             var sub = DB.submissions.find(function(s){ return s.tugasId===t.id && s.nisn===me.nisn; });
             var status = !sub ? '<span class="badge b-warn">Belum dikumpulkan</span>'
               : (sub.score===null||sub.score===undefined ? '<span class="badge b-guru">Sudah dikumpulkan · menunggu nilai</span>' : '<span class="badge b-ok">Nilai: '+sub.score+'</span>');
@@ -3775,7 +3859,8 @@
                      : '<div class="field" style="margin-top:12px"><label>Tulis jawabanmu di sini</label><textarea id="jawab_'+t.id+'" rows="3" placeholder="Tuliskan jawaban atau ringkasan hasil pengerjaanmu…"></textarea></div>'
                        + '<button class="btn" data-kumpul="'+t.id+'">Kumpulkan Tugas</button>')
               + '</div>';
-          }).join("") + '</div>' : emptyState("Belum ada tugas untuk kelas " + me.kelas + "."));
+          }).join("") + '</div>';
+          }).join("") : emptyState("Belum ada tugas untuk kelas " + me.kelas + "."));
       Array.prototype.forEach.call(c.querySelectorAll("[data-kumpul]"), function(b){
         b.onclick = function(){
           var tid = b.getAttribute("data-kumpul");
@@ -3797,12 +3882,15 @@
     function viewSiswaKuis(c){
       var me = myStudent();
       var list = DB.kuis.filter(function(k){ return kelasMasuk(k, me.kelas); });
-      c.innerHTML = pageHead("Kuis", "Kuis pilihan ganda untuk kelas " + me.kelas + ". Skor langsung terlihat setelah selesai.")
-        + (list.length ? '<div class="item-list">' + list.map(function(k){
+      var groups = kelompokBab(list);
+      c.innerHTML = pageHead("Kuis", "Kuis pilihan ganda untuk kelas " + me.kelas + ", terkumpul per bab. Skor langsung terlihat setelah selesai.")
+        + (list.length ? groups.map(function(g){
+            return babHeadHtml(g, "kuis") + '<div class="item-list">' + g.items.map(function(k){
             var res = DB.kuisResults.find(function(r){ return r.kuisId===k.id && r.nisn===me.nisn; });
             return '<div class="item"><div class="top"><div><h3>'+esc(k.title)+'</h3><div class="meta"><span class="pill">'+esc(k.mapel)+'</span> <span class="pill">'+esc(guruName(k.nip))+'</span> <span class="pill">'+k.questions.length+' soal</span></div></div>'
               + '<div class="acts">' + (res ? '<span class="badge '+(res.score>=75?"b-ok":"b-warn")+'">Skor saya: '+res.score+'</span>' : (k.questions.length ? '<button class="btn small" data-mulai-kuis="'+k.id+'">Mulai Kuis</button>' : '')) + '</div></div>' + extLinkHtml(k.link, "Buka Kuis di Tautan Eksternal") + '</div>';
-          }).join("") + '</div>' : emptyState("Belum ada kuis untuk kelas " + me.kelas + "."));
+          }).join("") + '</div>';
+          }).join("") : emptyState("Belum ada kuis untuk kelas " + me.kelas + "."));
       Array.prototype.forEach.call(c.querySelectorAll("[data-mulai-kuis]"), function(b){
         b.onclick = function(){ kerjakanKuis(b.getAttribute("data-mulai-kuis")); };
       });
@@ -3864,8 +3952,10 @@
     function viewSiswaAsesmen(c){
       var me = myStudent();
       var list = DB.asesmen.filter(function(a){ return kelasMasuk(a, me.kelas); });
-      c.innerHTML = pageHead("Asesmen", "Asesmen uraian untuk kelas " + me.kelas + ". Jawab dengan lengkap dan runtut.")
-        + (list.length ? '<div class="item-list">' + list.map(function(a){
+      var groups = kelompokBab(list);
+      c.innerHTML = pageHead("Asesmen", "Asesmen uraian untuk kelas " + me.kelas + ", terkumpul per bab. Jawab dengan lengkap dan runtut.")
+        + (list.length ? groups.map(function(g){
+            return babHeadHtml(g, "asesmen") + '<div class="item-list">' + g.items.map(function(a){
             var res = DB.asesmenResults.find(function(r){ return r.asesmenId===a.id && r.nisn===me.nisn; });
             var status = !res ? '<span class="badge b-warn">Belum dikerjakan</span>'
               : (res.score===null||res.score===undefined ? '<span class="badge b-guru">Sudah dijawab · menunggu nilai</span>' : '<span class="badge b-ok">Nilai: '+res.score+'</span>');
@@ -3875,7 +3965,8 @@
               + extLinkHtml(a.link, "Buka Tautan Asesmen")
               + (res ? "" : '<div style="margin-top:10px"><button class="btn small" data-kerjakan-asesmen="'+a.id+'">Kerjakan Asesmen</button></div>')
               + '</div>';
-          }).join("") + '</div>' : emptyState("Belum ada asesmen untuk kelas " + me.kelas + "."));
+          }).join("") + '</div>';
+          }).join("") : emptyState("Belum ada asesmen untuk kelas " + me.kelas + "."));
       Array.prototype.forEach.call(c.querySelectorAll("[data-kerjakan-asesmen]"), function(b){
         b.onclick = function(){ kerjakanAsesmen(b.getAttribute("data-kerjakan-asesmen")); };
       });
